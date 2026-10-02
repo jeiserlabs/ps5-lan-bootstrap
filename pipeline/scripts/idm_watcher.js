@@ -24,7 +24,11 @@ const { resolveGameFolder, moveFileToGameFolder } = require('../lib/library_orga
 const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
-const WATCH_DIR = cfg.paths.watchDir; // C:\Users\dev\Desktop
+const WATCH_DIRS = [
+  cfg.paths.watchDir, // C:\Users\dev\Desktop
+  'C:\\Users\\dev\\Downloads\\Compressed',
+  'C:\\Users\\dev\\Downloads',
+].filter((d) => fs.existsSync(d));
 const TARGET_DIR = cfg.paths.libraryDirs[0]; // C:\Biblioteca_Juegos_PS
 const STAGING_DIR = path.join(TARGET_DIR, '_staging');
 const PID_FILE = path.join(cfg.state.cacheDir, 'idm_watcher.pid');
@@ -165,51 +169,52 @@ function handleRarArchive(fullPath, filename) {
 
 function checkNewFiles() {
   ensureIdmAlive();
-  if (!fs.existsSync(WATCH_DIR)) return;
 
-  let entries = [];
-  try {
-    entries = fs.readdirSync(WATCH_DIR);
-  } catch (err) {
-    logPs5(TAG, `Error leyendo ${WATCH_DIR}: ${err.message}`, LOG_FILE);
-    return;
-  }
-
-  for (const file of entries) {
-    const lower = file.toLowerCase();
-    const isPkg = lower.endsWith('.pkg');
-    const isRar = lower.endsWith('.rar');
-    if (!isPkg && !isRar) continue;
-    if (processed.has(file)) continue;
-
-    const fullPath = path.join(WATCH_DIR, file);
-    let stat;
+  for (const watchDir of WATCH_DIRS) {
+    let entries = [];
     try {
-      stat = fs.statSync(fullPath);
-    } catch {
+      entries = fs.readdirSync(watchDir);
+    } catch (err) {
+      logPs5(TAG, `Error leyendo ${watchDir}: ${err.message}`, LOG_FILE);
       continue;
     }
 
-    // 1. Detección de estabilidad de archivo (evitar procesar mientras IDM escribe)
-    const locked = isFileLocked(fullPath);
-    const prevSize = lastSizes.get(file) || 0;
-    const now = Date.now();
-    const timeSinceMod = now - stat.mtimeMs;
-    const expectedSize = isPkg ? getExpectedSize(fullPath) : 0;
+    for (const file of entries) {
+      const lower = file.toLowerCase();
+      const isPkg = lower.endsWith('.pkg');
+      const isRar = lower.endsWith('.rar');
+      if (!isPkg && !isRar) continue;
+      if (processed.has(file)) continue;
 
-    if (locked || stat.size !== prevSize || (expectedSize > 0 && stat.size < expectedSize) || timeSinceMod < 15000) {
-      lastSizes.set(file, stat.size);
-      const sizeGb = (stat.size / (1024 ** 3)).toFixed(2);
-      const expStr = expectedSize > 0 ? ` / ${(expectedSize / (1024 ** 3)).toFixed(2)} GB` : '';
-      logPs5(TAG, `IDM escribiendo: ${file} [${sizeGb}${expStr}] (locked: ${locked})... esperando`, LOG_FILE);
-      continue;
-    }
+      const fullPath = path.join(watchDir, file);
+      let stat;
+      try {
+        stat = fs.statSync(fullPath);
+      } catch {
+        continue;
+      }
 
-    // 2. Archivo completado y estabilizado
-    if (isRar) {
-      handleRarArchive(fullPath, file);
-    } else if (isPkg) {
-      handlePkgFile(fullPath, file);
+      // 1. Detección de estabilidad de archivo (evitar procesar mientras IDM escribe)
+      const locked = isFileLocked(fullPath);
+      const prevSize = lastSizes.get(file) || 0;
+      const now = Date.now();
+      const timeSinceMod = now - stat.mtimeMs;
+      const expectedSize = isPkg ? getExpectedSize(fullPath) : 0;
+
+      if (locked || stat.size !== prevSize || (expectedSize > 0 && stat.size < expectedSize) || timeSinceMod < 15000) {
+        lastSizes.set(file, stat.size);
+        const sizeGb = (stat.size / (1024 ** 3)).toFixed(2);
+        const expStr = expectedSize > 0 ? ` / ${(expectedSize / (1024 ** 3)).toFixed(2)} GB` : '';
+        logPs5(TAG, `IDM escribiendo: ${file} [${sizeGb}${expStr}] (locked: ${locked})... esperando`, LOG_FILE);
+        continue;
+      }
+
+      // 2. Archivo completado y estabilizado
+      if (isRar) {
+        handleRarArchive(fullPath, file);
+      } else if (isPkg) {
+        handlePkgFile(fullPath, file);
+      }
     }
   }
 
@@ -242,10 +247,10 @@ function checkAutoTransition() {
     return;
   }
 
-  // 2. Verificar que no queden archivos pendientes o extracciones en Desktop
-  if (fs.existsSync(WATCH_DIR)) {
+  // 2. Verificar que no queden archivos pendientes o extracciones en los directorios de vigilancia
+  for (const dir of WATCH_DIRS) {
     try {
-      const files = fs.readdirSync(WATCH_DIR);
+      const files = fs.readdirSync(dir);
       for (const f of files) {
         const l = f.toLowerCase();
         if ((l.endsWith('.pkg') || l.endsWith('.rar')) && !processed.has(f)) {
@@ -278,7 +283,7 @@ function main() {
     process.exit(0);
   });
 
-  logPs5(TAG, `Centinela IDM blindado iniciado. Watch: ${WATCH_DIR}, Lib: ${TARGET_DIR}`, LOG_FILE);
+  logPs5(TAG, `Centinela IDM blindado iniciado. Watch: ${WATCH_DIRS.join(', ')}, Lib: ${TARGET_DIR}`, LOG_FILE);
 
   setInterval(checkNewFiles, 10000);
   checkNewFiles();
