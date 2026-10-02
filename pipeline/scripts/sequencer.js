@@ -14,10 +14,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { getPs5Config } = require('../../lib/ps5/config.js');
-const queueState = require('../../lib/ps5/queue_state.js');
-const { logPs5 } = require('../../lib/ps5/pipeline_log.js');
-const { acquirePid, releasePid } = require('../../lib/ps5/pidfile.js');
+const { getPs5Config } = require('../lib/config.js');
+const queueState = require('../lib/queue_state.js');
+const { logPs5 } = require('../lib/pipeline_log.js');
+const { acquirePid, releasePid } = require('../lib/pidfile.js');
 
 const cfg = getPs5Config();
 const STATE_FILE = path.join(cfg.state.cacheDir, 'queue_state.json');

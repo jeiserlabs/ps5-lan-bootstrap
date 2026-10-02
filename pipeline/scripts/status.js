@@ -11,9 +11,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const net = require('node:net');
-const { getPs5Config } = require('../../lib/ps5/config.js');
-const queueState = require('../../lib/ps5/queue_state.js');
-const { readAlivePid } = require('../../lib/ps5/pidfile.js');
+const { getPs5Config } = require('../lib/config.js');
+const queueState = require('../lib/queue_state.js');
+const { readAlivePid } = require('../lib/pidfile.js');
 
 const cfg = getPs5Config();
 
