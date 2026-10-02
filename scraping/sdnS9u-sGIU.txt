@@ -1,0 +1,285 @@
+Hello everyone, here I bring you the
+ tutorial on how to jailbreak your
+ PlayStation 5 from version 13.60 down
+ to version 7.00. This is truly the best
+ tutorial you are going to find on
+ YouTube. Now we are going to check the
+ software settings by going to System
+ and Console Information. And if you are
+ on version 13.60 or lower. This is the
+ tutorial for you. So, here we are going
+ to do something very important. We will
+ go to the web browser, clear the
+ cookies, select accept, and clear
+ website data. Also, it is very
+ important to uncheck this tab. This is
+ so your browser stays clean and you
+ don't have kernel panics, or at least
+ not as many. Next, we go to Saved Data
+ and Game/App Settings. Here it says
+ Automatic Updates. We must turn these
+ off because if they are enabled, it
+ will automatically download or install
+ software while in rest mode. So it is
+ very important to do this. Now we go to
+ Settings, Network, Settings, Connect to
+ the Internet, and Set Up Internet
+ Connection. Here you will establish
+ your internet connection using the
+ Wi-Fi network you use. In this case, I
+ use this one. And here I will enter my
+ password. In your case, you will enter
+ your own Wi-Fi password. This is very
+ important so you have an internet
+ connection, but later we will add DNS
+ to prevent the console from updating
+ and to access the page where we perform
+ the jailbreak. So we enter our password
+ and that's it. Now it is connecting to
+ the internet. We just wait for it to
+ connect to the internet. If this
+ software update notification appears.
+ Remember we can go to the home menu and
+ cancel the download, but sometimes it
+ appears, just remove it; if it doesn't
+ appear, no problem, but remember to go
+ to Downloads and just cancel it. Now we
+ are going back to Settings. We will go
+ to Network again. Go to Settings, look
+ for your internet connection settings,
+ the one you detected, and go to Options
+ and Advanced Settings. Here is
+ something very important where it says
+ DNS Settings. We will enter these DNS,
+ which are important to prevent updates
+ and provide the page for the jailbreak;
+ remember that these DNS are essential
+ to access the server and free your
+ console. So here you will enter 45
+ point 56 point 67 point 85. These are
+ the DNS: 45.56.67.85. We are going to
+ hit accept, it is connecting to the
+ internet connection point, and if it
+ just gives us an error, it is because
+ it is already connected through our DNS
+. And we are just going to go back to
+ the beginning, go to Guides,
+ Suggestions, User Guides, hit accept,
+ say yes, and it will open the jailbreak
+ page; and here, it is very important, I
+ always recommend waiting 5 seconds, or
+ as long as necessary, for the page to
+ load well. If you do it all at once, it
+ might give you a kernel panic. Just
+ tips. And here we hit it; when this
+ comes up, it means the jailbreak is
+ already done. It executed the Webkit
+ here, and now we are going to hit
+ circle and go to Payload, and we are
+ going to press X on Payload, and we are
+ going to go all the way up to where it
+ says PS5 Payload Manager, which we are
+ going to install. And here the Payload
+ Manager is installing, and here it will
+ just load this page; in this case, it
+ loaded this page for me because I
+ already did it before, but for you, it
+ will load this one. And here we are
+ going to go to Manager Payload. And we
+ are simply going to delete it because
+ we already installed it. We are going
+ to click here where the trash can is.
+ We just press X so it can be deleted.
+ We confirm and press X because we won't
+ need it anymore. And now right there we
+ are going to go down here and Loaders,
+ and we are going to install the Webkit
+ Auto Installer. This is so we don't
+ have to enter the page anymore; we just
+ have to do it from this new application
+. And that's it. Here it tells us that
+ obviously it installed and that's it.
+ Now we are just going to press X here
+ and we are going to install our Webkit
+ Auto-Loader Installer. This is only
+ going to be done once and that's it.
+ Once it is installed correctly, we are
+ going to press circle and circle. We
+ are going to go to the home menu and we
+ are going to go to Multimedia. And as
+ we are going to see, there are two new
+ applications, which are the Webkit and
+ the Payload Manager. Each one has its
+ function, so they are the best
+ applications for your JB. And here we
+ are going to enter the Payload Manager
+ again and we are going to delete the
+ Webkit Auto Installer because we
+ already installed it. We are going to
+ press X to confirm. And now yes,
+ everything is finally ready to inject
+ our payloads for the jailbreak. These
+ are the payloads used so we can run
+ PlayStation 4 and PlayStation 5 games.
+ Here it is very important, for the time
+ being, these payloads are universal,
+ and they are definitely the essential
+ ones. We are going to install the HEN
+ and we are simply installing it as well
+ as the GoldHEN. We are going to press X
+ and it is installing. And down here
+ where it says tools or utilities, we
+ are going to install the one I like a
+ lot, the Itemzflow. We are going to
+ press X. These payloads are universal,
+ so we will always need them. We can use
+ others, but for the moment these are
+ the main ones. Where it says autoloader
+ and here where it says add delay. We
+ are going to press X and we are going
+ to add where it says 5 seconds. And
+ that's it. That is all we have to do
+ here. Now we aren't going to touch
+ anything else here. This is highly
+ recommended. Do not add payloads. This
+ is so we don't get many kernel panics.
+ And here where it says settings, we are
+ going to change the language to Spanish
+. and we are going to go down to where
+ it says scan payloads from USB. We are
+ going to enable it. And that is all we
+ have to do here. This is very important
+ because we have payloads and here if
+ you want to send your payloads via USB
+ later or through the browser, but that
+ is for other videos. And now that you
+ have these payloads, it's very
+ important, now we can turn off our
+ console so you can see that you already
+ have them automatically. Now we simply
+ restart and your console will restart
+ so we can initiate the jailbreak from
+ this application's page. Here we are
+ starting our user and we have other
+ applications we have, and very
+ importantly, the GoldHEN autoloader. We
+ are going to press X. This is the
+ payload manager. We go to where it says
+ autoloader so the jailbreak loads
+ automatically. So here we are going to
+ press X to load the jailbreak. And here
+ the jailbreak is automatically loading
+ in a simple and easy way. And here this
+ menu will load for us. Here we are
+ going to set it to where it says abort
+ this load and here we will activate
+ payloads manually. Here we are going to
+ mount the GoldHEN and the Itemzflow.
+ After that we press X. and we finish
+ with the HEN. We always have to wait
+ until the notifications stop appearing
+ because all of this needs time, you
+ have to be patient. Now we simply press
+ circle, we go to settings and we go all
+ the way down to debug settings and we
+ go to where it says game and package
+ installer. Here all the PlayStation 4
+ and PlayStation 5 files are installed
+ and here in this case I have Spider-Man
+ 2 in FPKG format. In this case, since
+ the files haven't been updated yet to
+ run PPKG formats, or various
+ PlayStation 5 formats, there is the
+ Lizard format—I'm starting to get the
+ hang of it over time, but that's for
+ another video. But most importantly,
+ depending a lot on the version you are
+ on, there are the games; you always
+ have to check which version the game
+ supports or is dumped for, because it
+ might just be for version 13.60 or
+ specifically an older one. And here it
+ is already installed, and if we want to
+ play, it gives us an error because the
+ PPKG format isn't active yet for this
+ version, but I can bring you a video
+ where we go to Package Installer again
+ to install the PlayStation 4 files. As
+ you can see, I am going to install the
+ Resident Evil remake here, and it is
+ also in PKG format, which is the same
+ one the PlayStation 4 uses. And as I
+ tell you, it was asking me if I wanted
+ to install everything because I have
+ DLCs—it's a bit of a mess—but the
+ console automatically takes care of
+ arranging them, so the order doesn't
+ matter. I have them on my hard drive
+ along with Spider-Man, so we are
+ installing PlayStation 5 and
+ PlayStation 4 games, so that's very
+ important. This is FPKG format and
+ PlayStation 4 dot PKG. And here the
+ PlayStation is installing the DLC all
+ by itself. I just clicked accept all,
+ and it's doing the magic on its own.
+ And now once it is installed, just
+ remember, it has to be at the root of
+ your USB and it simply has to be in
+ PlayStation 4 PKG format, or
+ PlayStation 5 FPKG, or folder format,
+ which is for another video. And now we
+ are going to test the result, and as
+ you can see, this one does work well
+ because as of today, with this 13.60
+ exploit release, it is functional, so
+ any PlayStation 4 game is 100%
+compatible with your PlayStation 5
+ console with Jailbreak. Remember that
+ any original PlayStation 4 game—not
+ piracy—will always work for you in
+ dot PKG format. You just install it the
+ same way as PlayStation 5 PPKG formats.
+ So here it's giving us a connection,
+ and remember that if you download or
+ obtain your game correctly, it will
+ work poorly for you if you don't. If it
+ tells you the installation is incorrect
+, it's because you downloaded it wrong.
+ So my recommendation is to always use
+ good internet. And most importantly, I
+ recommend a program—I won't tell you
+ which one—but a good program is
+ always good for getting your games. And
+ as you can see, the PlayStation 4 games
+ work wonderfully. It's really a wonder
+ for you newcomers on 13.60, but that is
+ the installation. Simply go to settings
+ to install the PlayStation 5 PPKG files
+ and the PlayStation 4 PKG files. Those
+ are the two extensions, and then there
+ are folder formats for PS4. So, my
+ people, this is the installation, the
+ automatic JB; it really is the best
+ tutorial for you because I explain the
+ whole setup so you don't get a kernel
+ panic. Follow my advice. If you don't
+ want to deal with kernel panics, always
+ wait and take it easy, follow my tips
+ because I've had the PS5 since the
+ first version, so just follow the
+ advice and I'll bring you more videos.
+ Alright, my people, remember the
+ channel. We have a group for PS4, PS5,
+ PPKG, and folder formats, our Telegram
+ group with direct links without ads,
+ and we also have a free help group for
+ anyone having issues with PlayStation 5
+, PlayStation 4, Xbox, and Nintendo. We
+ have groups for you completely free of
+ charge. So, my people, remember to
+ subscribe to the channel, leave your
+ comment, and for any questions, we'll
+ see you on Telegram. Alright, my people
+, until next time. Please subscribe and
+ leave your comment.

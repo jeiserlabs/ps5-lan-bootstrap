@@ -1,0 +1,35 @@
+# Environment & Secrets (RULE 3 / RULE 8)
+.env
+.env.*
+*.env
+*.pem
+*.key
+
+# Runtime, logs, and processes
+*.pid
+*.log
+*.err
+data/logs/
+data/cache/
+_staging/
+node_modules/
+__pycache__/
+*.pyc
+
+# Rule 15: Cero binarios en GitHub (GitHub = Solo Codigo y Texto / Drive = Binarios)
+*.exe
+*.elf
+*.bin
+*.zip
+*.rar
+*.7z
+*.pkg
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / IDE artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

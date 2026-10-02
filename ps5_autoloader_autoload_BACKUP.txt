@@ -1,0 +1,7 @@
+# Lista de carga automatica del PS5 WebKit Autoloader
+# Un archivo por linea. Los nombres distinguen mayusculas/minusculas.
+# Las lineas !N son una espera de N milisegundos antes de enviar el siguiente payload.
+
+kstuff.elf
+!3000
+pldmgr.elf

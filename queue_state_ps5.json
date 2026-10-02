@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "name": "Marvel's Spider-Man (2018) - Base",
+      "url": "https://akirabox.to/2WVGrrlqGkx7/file",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Re-descarga limpia requerida (anterior archivo dio CE-107923-2 en PS5)",
+      "tags": ["CUSA02299"]
+    },
+    {
+      "name": "Haven (Base v1.06 + Update 1.06)",
+      "url": "https://1fichier.com/?7lou426eo1ffnl5e9bec",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Coop Angelina (~4.5 GB total, incluye Couples Update)",
+      "tags": ["CUSA23385"]
+    },
+    {
+      "name": "Marvel's Spider-Man - DLC Pack (1+2+3) + Update 1.19 (60FPS)",
+      "url": "https://akirabox.com/l76mZjQomanY/folder",
+      "status": "pending",
+      "attempts": 0,
+      "note": "The City That Never Sleeps (Heist, Turf Wars, Silver Lining, Preorder) + 60 FPS patch (~19.8 GB)",
+      "tags": ["CUSA02299"]
+    },
+    {
+      "name": "Spider-Man: Miles Morales (Base + Update 1.14 + All DLC Merged)",
+      "url": "https://akirabox.com/N2p3D84x3Ma5/file",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Trajes TRACK, Spider-Verse y gadgets integrados en Update 1.14 Merged (~38 GB)",
+      "tags": ["CUSA17776", "CUSA17722"]
+    },
+    {
+      "name": "God of War 2018 (Base + All DLC Pack)",
+      "url": "https://akirabox.to/qLQ36oZ7Yz19/file",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Base ~38.7 GB para casar con Update 1.36 (8 GB ya en PC) + DLC Pack armaduras y escudos",
+      "tags": ["CUSA07410"]
+    },
+    {
+      "name": "Ghost of Tsushima Director's Cut (Base + Update 2.24 + All DLC Merged)",
+      "url": "https://1fichier.com/?9e9o6r0z2heysvcstwks",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Incluye Isla de Iki, modo Legends, Hero of Tsushima y Director's Commentary (~50 GB)",
+      "tags": ["CUSA16972", "CUSA13323"]
+    },
+    {
+      "name": "God of War Ragnarök (Base CUSA34386)",
+      "url": "https://akirabox.to/k0embRxnmVb4/file",
+      "status": "pending",
+      "attempts": 0,
+      "note": "Base ~84 GB para casar con Update 6.02 (23.4 GB) y Valhalla DLC (8.2 GB) ya listos en disco PC",
+      "tags": ["CUSA34386"]
+    },
+    {
+      "name": "Naruto Storm 4 Road to Boruto",
+      "url": "https://akirabox.to/l76mZR0bZman/file",
+      "status": "completed",
+      "attempts": 0,
+      "note": "Instalado 100% en PS5; usuario jugando en vivo",
+      "completedAt": "2026-10-01T23:37:11.522Z"
+    }
+  ],
+  "updatedAt": "2026-10-01T23:46:40.000Z"
+}
