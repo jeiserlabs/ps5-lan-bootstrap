@@ -9,12 +9,13 @@
 *.pid
 *.log
 *.err
-data/logs/
-data/cache/
+data/
 _staging/
 node_modules/
 __pycache__/
 *.pyc
+scratch/
+**/scratch/
 
 # Rule 15: Cero binarios en GitHub (GitHub = Solo Codigo y Texto / Drive = Binarios)
 *.exe

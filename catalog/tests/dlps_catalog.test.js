@@ -1,16 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import path from 'path';
-import fs from 'fs';
-import { getDb, upsertBatch, searchGames, getStats, setMeta, extractSlug } from '../lib/games/dlps_db.js';
-import { inferTags, cleanTitle, parseGameList } from '../lib/games/dlps_scraper.js';
+'use strict';
+
+const { describe, it, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+const { getDb, upsertBatch, searchGames, getStats, setMeta, extractSlug } = require('../lib/dlps_db.js');
+const { inferTags, cleanTitle, parseGameList } = require('../lib/dlps_scraper.js');
 
 describe('DLPS Catalog DB & Scraper', () => {
   let testDb;
-  const testDbPath = path.resolve(__dirname, './scratch/test_dlps_catalog.db');
+  const testDbDir = path.resolve(__dirname, './scratch');
+  const testDbPath = path.resolve(testDbDir, 'test_dlps_catalog.db');
 
   beforeEach(() => {
+    if (!fs.existsSync(testDbDir)) {
+      fs.mkdirSync(testDbDir, { recursive: true });
+    }
     if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath);
+      try { fs.unlinkSync(testDbPath); } catch {}
     }
     testDb = getDb(testDbPath);
   });
@@ -20,27 +27,27 @@ describe('DLPS Catalog DB & Scraper', () => {
       testDb.close();
     }
     if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath);
+      try { fs.unlinkSync(testDbPath); } catch {}
     }
   });
 
   it('debe inferir tags automáticamente basados en palabras clave', () => {
-    expect(inferTags('It Takes Two')).toContain('coop');
-    expect(inferTags('Unravel Two')).toContain('coop');
-    expect(inferTags('Haven Romance Story')).toContain('romance');
-    expect(inferTags('Sailor Moon SuperS')).toContain('anime');
-    expect(inferTags('Crash Team Racing')).toContain('racing');
-    expect(inferTags('Gran Turismo 7')).toContain('racing');
-    expect(inferTags('Tekken 8')).toContain('fighting');
+    assert.ok(inferTags('It Takes Two').includes('coop'));
+    assert.ok(inferTags('Unravel Two').includes('coop'));
+    assert.ok(inferTags('Haven Romance Story').includes('romance'));
+    assert.ok(inferTags('Sailor Moon SuperS').includes('anime'));
+    assert.ok(inferTags('Crash Team Racing').includes('racing'));
+    assert.ok(inferTags('Gran Turismo 7').includes('racing'));
+    assert.ok(inferTags('Tekken 8').includes('fighting'));
   });
 
   it('debe limpiar títulos correctamente', () => {
-    expect(cleanTitle('1. [DLPSGAME.COM] Spider-Man')).toBe('Spider-Man');
-    expect(cleanTitle('45.   Crash Bandicoot  ')).toBe('Crash Bandicoot');
+    assert.equal(cleanTitle('1. [DLPSGAME.COM] Spider-Man'), 'Spider-Man');
+    assert.equal(cleanTitle('45.   Crash Bandicoot  '), 'Crash Bandicoot');
   });
 
   it('debe extraer el slug de la URL', () => {
-    expect(extractSlug('https://dlpsgame.com/it-takes-two-ps4-pkg/')).toBe('it-takes-two-ps4-pkg');
+    assert.equal(extractSlug('https://dlpsgame.com/it-takes-two-ps4-pkg/'), 'it-takes-two-ps4-pkg');
   });
 
   it('debe insertar y buscar juegos en la base de datos', () => {
@@ -66,20 +73,20 @@ describe('DLPS Catalog DB & Scraper', () => {
     ];
 
     const inserted = upsertBatch(mockGames, testDb);
-    expect(inserted).toBe(3);
+    assert.equal(inserted, 3);
 
     const stats = getStats(testDb);
-    expect(stats.total).toBe(3);
-    expect(stats.ps4).toBe(2);
-    expect(stats.ps5).toBe(1);
+    assert.equal(stats.total, 3);
+    assert.equal(stats.ps4, 2);
+    assert.equal(stats.ps5, 1);
 
     const searchCoop = searchGames({ query: 'two' }, testDb);
-    expect(searchCoop.length).toBe(1);
-    expect(searchCoop[0].title).toBe('It Takes Two');
+    assert.equal(searchCoop.length, 1);
+    assert.equal(searchCoop[0].title, 'It Takes Two');
 
     const searchPs5 = searchGames({ platform: 'ps5' }, testDb);
-    expect(searchPs5.length).toBe(1);
-    expect(searchPs5[0].title).toBe('Haven');
+    assert.equal(searchPs5.length, 1);
+    assert.equal(searchPs5[0].title, 'Haven');
   });
 
   it('debe parsear listas markdown correctamente', () => {
@@ -89,9 +96,9 @@ describe('DLPS Catalog DB & Scraper', () => {
       3. [Unravel Two](https://dlpsgame.com/unravel-two-ps4-pkg/)
     `;
     const parsed = parseGameList(sampleMd, 'ps4');
-    expect(parsed.length).toBe(3);
-    expect(parsed[2].title).toBe('Unravel Two');
-    expect(parsed[2].platform).toBe('ps4');
-    expect(parsed[2].tags).toContain('coop');
+    assert.equal(parsed.length, 3);
+    assert.equal(parsed[2].title, 'Unravel Two');
+    assert.equal(parsed[2].platform, 'ps4');
+    assert.ok(parsed[2].tags.includes('coop'));
   });
 });

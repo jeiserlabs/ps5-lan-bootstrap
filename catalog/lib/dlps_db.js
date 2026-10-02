@@ -1,8 +1,8 @@
 'use strict';
 
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+const { DatabaseSync } = require('node:sqlite');
+const path = require('node:path');
+const fs = require('node:fs');
 
 const DEFAULT_DB_PATH = path.resolve(__dirname, '../../data/games_catalog.db');
 
@@ -13,9 +13,9 @@ function getDb(customPath = null) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA synchronous = NORMAL;');
 
   initSchema(db);
   return db;
@@ -79,25 +79,29 @@ function upsertBatch(items, db) {
       updated_at = datetime('now')
   `);
 
-  const runMany = db.transaction((games) => {
-    let count = 0;
-    for (const g of games) {
+  db.exec('BEGIN');
+  let count = 0;
+  try {
+    for (const g of items) {
       stmt.run({
-        title: g.title,
-        slug: g.slug || extractSlug(g.url),
-        platform: g.platform.toLowerCase(),
-        url: g.url,
-        cusa: g.cusa || null,
-        category: g.category || null,
-        tags: g.tags || null,
-        description: g.description || null
+        '@title': g.title,
+        '@slug': g.slug || extractSlug(g.url),
+        '@platform': g.platform.toLowerCase(),
+        '@url': g.url,
+        '@cusa': g.cusa || null,
+        '@category': g.category || null,
+        '@tags': g.tags || null,
+        '@description': g.description || null
       });
       count++;
     }
-    return count;
-  });
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 
-  return runMany(items);
+  return count;
 }
 
 function extractSlug(url) {
@@ -113,12 +117,12 @@ function searchGames({ query = '', platform = null, tag = null, limit = 50, offs
 
   if (platform) {
     sql += ' AND platform = @platform';
-    params.platform = platform.toLowerCase();
+    params['@platform'] = platform.toLowerCase();
   }
 
   if (tag) {
     sql += ' AND tags LIKE @tagPattern';
-    params.tagPattern = `%${tag.toLowerCase()}%`;
+    params['@tagPattern'] = `%${tag.toLowerCase()}%`;
   }
 
   if (query && query.trim()) {
@@ -126,13 +130,13 @@ function searchGames({ query = '', platform = null, tag = null, limit = 50, offs
     words.forEach((w, idx) => {
       const pName = `q_${idx}`;
       sql += ` AND (title LIKE @${pName} OR cusa LIKE @${pName} OR tags LIKE @${pName})`;
-      params[pName] = `%${w}%`;
+      params[`@${pName}`] = `%${w}%`;
     });
   }
 
   sql += ' ORDER BY title ASC LIMIT @limit OFFSET @offset';
-  params.limit = limit;
-  params.offset = offset;
+  params['@limit'] = limit;
+  params['@offset'] = offset;
 
   return db.prepare(sql).all(params);
 }
@@ -144,9 +148,9 @@ function getStats(db) {
   const lastSync = db.prepare("SELECT value, updated_at FROM catalog_meta WHERE key = 'last_sync'").get();
 
   return {
-    total,
-    ps4,
-    ps5,
+    total: Number(total),
+    ps4: Number(ps4),
+    ps5: Number(ps5),
     lastSync: lastSync ? { date: lastSync.value, updated_at: lastSync.updated_at } : null
   };
 }
@@ -166,13 +170,13 @@ function recordInstalledGame(game, db) {
     VALUES (@title, @cusa, @platform, @size_gb, @status, @usb_drive, @notes)
   `);
   return stmt.run({
-    title: game.title,
-    cusa: game.cusa || null,
-    platform: (game.platform || 'ps4').toLowerCase(),
-    size_gb: game.size_gb || 0,
-    status: game.status || 'instalando_ps5',
-    usb_drive: game.usb_drive || null,
-    notes: game.notes || null
+    '@title': game.title,
+    '@cusa': game.cusa || null,
+    '@platform': (game.platform || 'ps4').toLowerCase(),
+    '@size_gb': game.size_gb || 0,
+    '@status': game.status || 'instalando_ps5',
+    '@usb_drive': game.usb_drive || null,
+    '@notes': game.notes || null
   });
 }
 
@@ -200,4 +204,3 @@ module.exports = {
   getInstalledGames,
   updateInstalledStatus
 };
-
