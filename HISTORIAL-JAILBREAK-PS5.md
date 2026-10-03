@@ -232,32 +232,99 @@ autoload.txt: kstuff.elf / !2000 / pkg-receiver.elf
 
 ## 12. Uso diario
 
-1. Encender PS5 → abrir **WebKit Autoloader** → exploit + cadena solos (esperar notificaciones).
-2. FTP: `ftp://192.168.2.2:2121` desde FileZilla/Explorador (solo mientras la sesión está activa).
-3. Reinicio = repetir el paso 1 (**tethered**).
-4. **Cable LAN puesto siempre** (Relapse necesita interfaz de red).
-5. **No actualizar** (14.00 lo parchea).
+1. Encender PS5 → abrir **WebKit Autoloader** → exploit + cadena solos (kstuff → elfldr → pkg-receiver → ftpsrv → SM+). Único paso manual existente (tethered).
+2. La PC se cuida sola: la tarea programada **`PS5_PC_Pipeline`** (3-oct) levanta al iniciar sesión el servidor LAN 9898 + watchdog 24/7 sin ventanas (log: `data/logs/ps5_pc_autostart.log`).
+3. FTP: `ftp://192.168.2.2:2121` desde FileZilla/Explorador (solo mientras la sesión está activa).
+4. Si algo se degrada a media sesión, el watchdog lo repara y avisa por Telegram solo.
+5. **Cable LAN puesto siempre** (Relapse necesita interfaz de red).
+6. **No actualizar** (14.00 lo parchea).
 
-## 13. Troubleshooting conocido
+## 13. Arquitectura 100% independiente (sin PC) — 3-oct
+
+Jeiser: la PS5 no vivirá conectada a la PC; la conecta solo para instalar juegos. Estado verificado:
+
+- **README oficial itsPLK:** *"Fully offline, no third-party DNS... everything is served straight from your PS5"* / *"Once it's installed, you don't need a PC or the internet"*. El instalador abrió el navegador una vez (1-oct) para **cachear la página del exploit dentro de la PS5**; la app WKAL00001 la carga de ahí.
+- **Payloads internos:** `/data/pldmgr/payloads/` (kstuff, elfldr, pkg-receiver, ftpsrv, SM+) + `/data/pldmgr/autoload.txt` — nada en USB, nada externo.
+- **Prueba empírica:** boot del 3-oct 03:55 con el host de la PC APAGADO (su log sin writes desde el 2-oct 06:16) → la cadena corrió completa y se jugaron juegos.
+- **Único requisito en consola:** Relapse necesita una **interfaz de red activa** al momento del exploit (Wi-Fi al router de casa vale, internet NO requerido). Cable a PC apagada = sin link = no sirve.
+- **La PC es opcional:** solo para instalar juegos por LAN, gestión remota (FTP/elfldr/Telegram) y reinstalar el exploit si se borran los datos del navegador. Su stack (host DNS+HTTPS, servidor 9898, watchdog) arranca solo al iniciar sesión Windows (tarea `PS5_PC_Pipeline`).
+
+**Reglas de estabilidad standalone:**
+1. **NUNCA borrar datos/cookies del navegador** → destruye la página cacheada del exploit (recuperación: reinstalar con PC vía host DNS+HTTPS).
+2. En Wi-Fi de casa: mantener DNS manual `192.168.2.1` en el perfil de red (fue como funcionó el boot 3-oct: DNS muerto → el navegador sirve la página de caché) y **actualizaciones automáticas desactivadas**.
+3. Al abrir el Autoloader, esperar las notificaciones de los 5 payloads antes de lanzar un juego.
+
+## 14. Troubleshooting conocido
 
 - Relapse puede **colgar/panic** → apagado 10 s → reintentar. Limpia cookies/datos del navegador entre intentos.
 - La app solo vive mientras hay sesión: tras reiniciar, el puerto **8084** y el **2121** están cerrados hasta volver a lanzar la app.
 - El host de la PC hay que relanzarlo solo si se apaga la PC (comando en §4).
 - Errores 429 al bajar subtítulos con yt-dlp: esperar unos minutos.
 
-## 14. Archivos en el workspace
+## 15. Diagnóstico 3-oct-2026: "kstuff no funciona" (juegos no arrancan)
+
+**Síntoma:** los payloads cargan (`autoload_status: done:3`) y hay juegos instalados, pero al abrirlos no arrancan.
+
+**Hallazgos (verificados por FTP/HTTP desde la PC):**
+- `kstuff.elf` v1.11 (hash `ab9a6cb4`) correcto y cargado — **la cadena NO era el problema**.
+- **Causa raíz:** en fw **13.40 el kstuff 1.11 no soporta ejecutar juegos instalados** (FPKG). Estado de la escena (2–3 oct 2026):
+  - Kstuff Lite ≤1.11: FPKG **hasta 11.60** (guía gbatemp: "Kstuff Lite: 3.00-12.70" = jailbreak sí, FPKG no en 13.xx).
+  - Builds drakmor `kstuff 1.12/1.13-fpkg` + `a53_ppr_install_fast.elf`: FPKG **hasta 11.60** (perfiles A53 verificados solo 1.00–11.40, repo `drakmor/ppr-patch`).
+  - **Kstuff-NG** (EchoStretch, rehecho para 13.xx): FPKG aún **sin release** ("SOON"; rumor del 30-sep desmentido).
+- pkg-receiver (12800) estaba **caído** en este boot (solo ftpsrv vivía).
+
+**Acciones aplicadas:**
+1. pkg-receiver **relanzado** vía Payload Manager `/loadpayload` → `12800` responde `{busy:false}` ✅
+2. **ShadowMountPlus 1.7beta3** (drakmor, 1-oct, soporta hasta 13.60) descargado, subido a `/data/pldmgr/payloads/shadowmountplus/` (hash verificado `2a7427e2`) y lanzado → creó `/data/shadowmount` + `/data/.kstuff_noautomount` ✅
+3. Autoload actualizado: `kstuff.elf, pkg-receiver.elf, ftpsrv-ps5.elf, shadowmountplus.elf` (delay 5 s) ✅
+4. Aviso enviado a Telegram ✅
+
+**Cómo jugar en 13.40 hoy (método de la escena):** convertir el PKG a **imagen exFAT (`.exfat`)** y montar con SM+ (detecta, registra y monta al iniciar el juego). Los PKGs instalados por pkg-receiver quedan en la consola pero **no arrancan** hasta que salga Kstuff-NG.
+
+**Regla:** no actualizar firmware; cuando salga el release de Kstuff-NG, subirlo y ponerlo primero en el autoload.
+
+### 15.1 Causa exacta de "kstuff deja de funcionar a media sesión" (3-oct, tarde)
+
+Jeiser aclara: kstuff 1.11 **sí funcionaba**, pero **se desactivaba solo de un momento a otro**.
+
+**Causa encontrada en `/data/shadowmount/debug.log`:** SM+ arranca con `kstuff_game_auto_toggle=1` — **pausa kstuff al lanzar un juego** (15–25 s después del launch, para no frenarlo) y lo **reanuda al salir**. Si el juego **se cuelga/crashea** (ej. MLB The Show CUSA43942, que quedó con mounts vivos en `/mnt/sandbox/pfsmnt`), la reanudación nunca llega → **kstuff queda pausado hasta el próximo reboot**.
+
+**Fix aplicado (verificado):**
+1. `/data/shadowmount/config.ini` → `kstuff_game_auto_toggle=0` (SM+ releído y confirmado en su log `[CFG]`; backup del original en `config.ini.bak-20261003`). SM+ ya no toca kstuff jamás.
+2. kstuff relanzado en caliente vía Payload Manager (des-parcheado de nuevo).
+3. **Watchdog en la PC:** `node pipeline/scripts/kstuff_watchdog.js` — cada 60 s sondea Payload Manager/12800/2121; si degradan, relanza kstuff+pkg-receiver vía `/loadpayload` y avisa por Telegram (máx 8/día, cooldown 10 min). Si la consola está sin jailbreak (8084 cerrado) avisa "abrir WebKit Autoloader".
+
+**Nota:** con `kstuff_game_auto_toggle=0` los juegos corren con kstuff activo todo el tiempo (leve overhead de syscalls, opcional `kstuff-toggle` para optimizations futuras).
+
+### 15.2 Audit de escena 3-oct: ¿subir a 13.60? / exploit más estable
+
+**Pregunta de Jeiser:** tengo 13.40, ¿subo a 13.60? ¿cuál es el exploit más estable para Slim disc?
+
+**Veredicto (fuentes: r/PS5_Jailbreak 1-oct, Tom's Hardware, TechPowerUp, videocardz, guía gbatemp):**
+
+1. **NO subir a 13.60.** La comunidad lo dice literal: *"don't update for the hell of it — always stay as low as you can"*. Razones:
+   - Relapse cubre 7.00–13.60: **mismo exploit, ni más estable ni más funciones** en 13.60.
+   - FPKG instalado no funciona en ninguno de los dos hasta que salga **Kstuff-NG** (que soporta 13.60 — igual cubrirá 13.40).
+   - **No existe downgrade** de firmware: es una puerta de un solo sentido.
+   - Única razón legítima para subir: un dump nuevo cuyo update oficial exija FW 13.60 (ej. Wolverine con su patch 1.001.005). Decidir caso por caso.
+2. **El exploit más estable para 13.40 ES el que ya tiene:** **Relapse** vía **WebKit Autoloader 0.5.2** (última release, 30-sep; verificamos que sigue siendo la más nueva). Requisito: interfaz de red activa → **cable LAN permanente** (ya lo tiene). Alternativas en 13.40 solo userland (Y2JB), sin kernel → descartadas.
+3. **Blindaje añadido hoy:** `elfldr-ps5.elf` **v0.26** (ps5-payload-dev) añadido a la cadena autoload → **puerto 9021 abierto** = poder empujar cualquier payload desde la PC (`node pipeline/scripts/send_elf.js x.elf`), sobrevive a rest mode y a crashes de payloads. Hash verificado (`ed6d587a`). El día que salga Kstuff-NG se instala desde la PC en 10 segundos.
+
+**Cadena autoload final:** `kstuff → elfldr → pkg-receiver → ftpsrv → SM+`
+
+## 16. Archivos en el workspace
 
 ```
 HISTORIAL-JAILBREAK-PS5.md      ← este documento
 ps5_autoloader_autoload_BACKUP.txt   respaldo del autoload.txt interno eliminado
 scraping/  NanospeedGamer.txt PLAYNOWTOOLS.txt MODDEDWARFARE.txt   (listados de videos)
 scraping/  sdnS9u-sGIU.txt   (transcripción completa tutorial ES)
-payloads/  kstuff.elf (v1.11)  ftpsrv-ps5.elf (v0.21.1)
+payloads/  kstuff.elf (v1.11)  ftpsrv-ps5.elf (v0.21.1)  shadowmountplus.elf (1.7beta3)
 internal/  kstuff.elf + autoload.txt   (staging, ya no hace falta)
 ps5-host/  webkit-autoloader-host_v0.5.2.py/.exe, host.log, host.err, cert.pem
 ```
 
-## 15. Fuentes principales
+## 17. Fuentes principales
 
 - Kotaku: *PS5 Jailbreak Exploit For Systems Running July 2026 Firmware* (29/09/2026)
 - Tom's Hardware / TechPowerUp / Korben (30/09–01/10/2026)

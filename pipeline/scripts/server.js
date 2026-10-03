@@ -48,22 +48,36 @@ function fuzzyFind(dir, target, depth) {
   return null;
 }
 
+/** @type {Map<string, { filePath: string, fuzzy: boolean }>} */
+const pkgPathCache = new Map();
+
 /**
  * @param {string} filename
  * @returns {{ filePath: string, fuzzy: boolean } | null}
  */
 function resolvePkg(filename) {
+  if (pkgPathCache.has(filename)) {
+    return pkgPathCache.get(filename);
+  }
   for (const dir of cfg.paths.libraryDirs) {
     const exact = path.join(dir, filename);
     try {
-      if (fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) return { filePath: exact, fuzzy: false };
+      if (fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
+        const res = { filePath: exact, fuzzy: false };
+        pkgPathCache.set(filename, res);
+        return res;
+      }
     } catch {
       // directorio inaccesible: se continúa
     }
   }
   for (const dir of cfg.paths.libraryDirs) {
     const found = fuzzyFind(dir, filename, 3);
-    if (found) return { filePath: found, fuzzy: true };
+    if (found) {
+      const res = { filePath: found, fuzzy: true };
+      pkgPathCache.set(filename, res);
+      return res;
+    }
   }
   return null;
 }

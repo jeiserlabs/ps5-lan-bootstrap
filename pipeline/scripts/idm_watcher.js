@@ -1,14 +1,9 @@
 #!/usr/bin/env node
 /**
  * @file idm_watcher.js
- * @description Daemon centinela para IDM:
- *   1. Monitoriza IDMan.exe y lo auto-relanza si se cierra.
- *   2. Detecta archivos .rar descargados en Desktop, los descomprime automáticamente
- *      con 7-Zip/UnRAR y contraseña (DLPSGAME.COM), y borra el RAR tras extracción exitosa.
- *   3. Aplica auditoría forense de 7 barreras (pkg_validator.js) sobre cada PKG extraído o descargado.
- *   4. Organiza automáticamente los PKGs válidos en su carpeta designada:
- *      C:\Biblioteca_Juegos_PS\<Nombre Juego> (<TitleID>)\
- * SRP < 300L. Cero dependencias externas.
+ * @description Daemon centinela IDM: relanza IDM, descomprime RARs en Desktop,
+ *   audita PKGs (7 barreras), organiza en biblioteca y auto-dispara LAN installer.
+ * SRP < 300L.
  */
 'use strict';
 
@@ -120,12 +115,20 @@ function handlePkgFile(fullPath, filename) {
  * @param {string} fullPath
  * @param {string} filename
  */
+const lastRarAttempt = new Map();
+
 function handleRarArchive(fullPath, filename) {
   const multi = inspectMultiPart(filename);
   if (multi.isMultiPart && multi.partNum !== 1) {
     // Es parte 2, 3... esperar a que part1 coordine la extracción
     return;
   }
+
+  const lastAttempt = lastRarAttempt.get(filename) || 0;
+  if (Date.now() - lastAttempt < 60000) {
+    return; // Esperar al menos 60s antes de reintentar si faltan volúmenes
+  }
+  lastRarAttempt.set(filename, Date.now());
 
   logPs5(TAG, `📦 Iniciando descompresión automática de ${filename}...`, LOG_FILE);
   const extRes = extractArchive(fullPath, STAGING_DIR, LOG_FILE);
@@ -228,17 +231,16 @@ function checkAutoTransition() {
 
   // 1. Verificar si la cola de IDM está completamente terminada
   try {
-    const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { encoding: 'utf8', timeout: 2000 });
+    const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 2000 });
     const qM = qOut.match(/Queue\s+REG_SZ\s+(.*)$/m);
     const queueIds = qM ? qM[1].trim().split(/\s+/).filter(Boolean) : [];
     if (queueIds.length === 0) return; // Cola vacía o no inicializada
 
     for (const id of queueIds) {
       try {
-        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { encoding: 'utf8', timeout: 1500 });
+        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
         const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-        const st = stM ? parseInt(stM[1], 16) : 0;
-        if (st !== 5) return; // Hay al menos una descarga pendiente (no terminada)
+        if (st !== 3 && st !== 5) return; // Hay al menos una descarga pendiente (no terminada)
       } catch {
         return;
       }
