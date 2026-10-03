@@ -19,11 +19,7 @@ const { resolveGameFolder, moveFileToGameFolder } = require('../lib/library_orga
 const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
-const WATCH_DIRS = [
-  cfg.paths.watchDir, // C:\Users\dev\Desktop
-  'C:\\Users\\dev\\Downloads\\Compressed',
-  'C:\\Users\\dev\\Downloads',
-].filter((d) => fs.existsSync(d));
+const WATCH_DIRS = [cfg.paths.watchDir, 'C:\\Users\\dev\\Downloads\\Compressed', 'C:\\Users\\dev\\Downloads'].filter((d) => fs.existsSync(d));
 const TARGET_DIR = cfg.paths.libraryDirs[0]; // C:\Biblioteca_Juegos_PS
 const STAGING_DIR = path.join(TARGET_DIR, '_staging');
 const PID_FILE = path.join(cfg.state.cacheDir, 'idm_watcher.pid');
@@ -91,82 +87,58 @@ function handlePkgFile(fullPath, filename) {
     if (moveRes.success) {
       processed.add(filename);
       lastSizes.delete(filename);
-      sendTelegramMessage(`📦 <b>Juego Verificado y Listo:</b>\n• <code>[${result.info.titleId}] ${result.info.title}</code> (${sizeGb} GB)\n• Guardado en biblioteca.`);
+      sendTelegramMessage(`📦 <b>Juego Verificado y Listo en PC:</b>\n• <code>[${result.info.titleId}] ${result.info.title}</code> (${sizeGb} GB)\n• Guardado en biblioteca.\n\n👉 <b>¡Turno de poner la siguiente descarga en IDM!</b>`);
     }
   } else {
-    logPs5(TAG, `❌ RECHAZADO: ${filename} NO pasó la validación forense:`, LOG_FILE);
-    for (const err of result.errors) {
-      logPs5(TAG, `   └─ ${err}`, LOG_FILE);
-    }
-    const corruptPath = `${fullPath}.corrupt`;
+    logPs5(TAG, `❌ RECHAZADO: ${filename} fallo validacion: ${result.errors.join('; ')}`, LOG_FILE);
     try {
-      fs.renameSync(fullPath, corruptPath);
-      logPs5(TAG, `⚠️ Puesto en cuarentena: ${corruptPath}`, LOG_FILE);
-      processed.add(filename);
-      lastSizes.delete(filename);
+      fs.renameSync(fullPath, `${fullPath}.corrupt`);
+      logPs5(TAG, `⚠️ Cuarentena: ${fullPath}.corrupt`, LOG_FILE);
     } catch (renErr) {
       logPs5(TAG, `No se pudo renombrar corrupto: ${renErr.message}`, LOG_FILE);
     }
+    processed.add(filename);
+    lastSizes.delete(filename);
   }
 }
 
-/**
- * Procesa un archivo .rar completo en Desktop.
- * @param {string} fullPath
- * @param {string} filename
- */
 const lastRarAttempt = new Map();
+
+function findStagedPkgs(dir) {
+  const list = [];
+  try {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) list.push(...findStagedPkgs(full));
+      else if (ent.name.toLowerCase().endsWith('.pkg')) list.push(full);
+    }
+  } catch {}
+  return list;
+}
 
 function handleRarArchive(fullPath, filename) {
   const multi = inspectMultiPart(filename);
-  if (multi.isMultiPart && multi.partNum !== 1) {
-    // Es parte 2, 3... esperar a que part1 coordine la extracción
-    return;
-  }
+  if (multi.isMultiPart && multi.partNum !== 1) return;
 
   const lastAttempt = lastRarAttempt.get(filename) || 0;
-  if (Date.now() - lastAttempt < 60000) {
-    return; // Esperar al menos 60s antes de reintentar si faltan volúmenes
-  }
+  if (Date.now() - lastAttempt < 60000) return;
   lastRarAttempt.set(filename, Date.now());
 
-  logPs5(TAG, `📦 Iniciando descompresión automática de ${filename}...`, LOG_FILE);
+  logPs5(TAG, `📦 Iniciando descompresion automatica de ${filename}...`, LOG_FILE);
   const extRes = extractArchive(fullPath, STAGING_DIR, LOG_FILE);
-
   if (!extRes.success) {
-    logPs5(TAG, `⚠️ Descompresión pendiente o incompleta: ${extRes.error}`, LOG_FILE);
+    logPs5(TAG, `⚠️ Descompresion pendiente/incompleta: ${extRes.error}`, LOG_FILE);
     return;
   }
 
-  // Buscar todos los PKG extraídos en staging (recursivo para RARs con subcarpetas)
-  function collectStagedPkgs(dir) {
-    const list = [];
-    try {
-      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, ent.name);
-        if (ent.isDirectory()) {
-          list.push(...collectStagedPkgs(full));
-        } else if (ent.name.toLowerCase().endsWith('.pkg')) {
-          list.push(full);
-        }
-      }
-    } catch {}
-    return list;
-  }
-
-  const stagedPkgs = collectStagedPkgs(STAGING_DIR);
-  for (const pkgPath of stagedPkgs) {
-    handlePkgFile(pkgPath, path.basename(pkgPath));
-  }
+  const stagedPkgs = findStagedPkgs(STAGING_DIR);
+  for (const pkgPath of stagedPkgs) handlePkgFile(pkgPath, path.basename(pkgPath));
 
   if (stagedPkgs.length > 0) {
-    // Limpieza del archivo RAR para liberar espacio en disco
     cleanupArchiveVolumes(fullPath, LOG_FILE);
     processed.add(filename);
     lastSizes.delete(filename);
-    try {
-      fs.rmSync(STAGING_DIR, { recursive: true, force: true });
-    } catch {}
+    try { fs.rmSync(STAGING_DIR, { recursive: true, force: true }); } catch {}
   }
 }
 
@@ -221,7 +193,39 @@ function checkNewFiles() {
     }
   }
 
+  checkIdmEvents();
   checkAutoTransition();
+}
+
+/** @type {Set<string>} */
+const idmNotified = new Set();
+
+function checkIdmEvents() {
+  try {
+    const qOut = execSync('reg query HKCU\\Software\\DownloadManager', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
+    const matches = qOut.match(/DownloadManager\\(\d+)/g);
+    if (!matches) return;
+    for (const m of matches) {
+      const id = m.split('\\').pop();
+      if (idmNotified.has(id)) continue;
+      try {
+        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
+        const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/);
+        const st = stM ? parseInt(stM[1], 16) : 0;
+        if (st === 3) {
+          idmNotified.add(id);
+          let name = `Descarga #${id}`;
+          try {
+            const fnOut = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v FileName`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
+            const fnM = fnOut.match(/FileName\s+REG_SZ\s+(.*)$/m);
+            if (fnM) name = (fnM[1].trim().split('?')[0]);
+          } catch {}
+          logPs5(TAG, `🎉 IDM completó descarga: ${name}`, LOG_FILE);
+          sendTelegramMessage(`📥 <b>IDM: Descarga Finalizada:</b>\n• <code>${name}</code>\n• Ensamblando/verificando en PC...\n\n👉 <b>¡Pon a descargar el siguiente juego en IDM ahora!</b>`);
+        }
+      } catch {}
+    }
+  } catch {}
 }
 
 let lanInstallerStarted = false;
@@ -229,18 +233,18 @@ let lanInstallerStarted = false;
 function checkAutoTransition() {
   if (lanInstallerStarted) return;
 
-  // 1. Verificar si la cola de IDM está completamente terminada
   try {
     const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 2000 });
     const qM = qOut.match(/Queue\s+REG_SZ\s+(.*)$/m);
     const queueIds = qM ? qM[1].trim().split(/\s+/).filter(Boolean) : [];
-    if (queueIds.length === 0) return; // Cola vacía o no inicializada
+    if (queueIds.length === 0) return;
 
     for (const id of queueIds) {
       try {
         const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
         const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-        if (st !== 3 && st !== 5) return; // Hay al menos una descarga pendiente (no terminada)
+        const st = stM ? parseInt(stM[1], 16) : 0;
+        if (st !== 3 && st !== 5) return;
       } catch {
         return;
       }
@@ -249,44 +253,37 @@ function checkAutoTransition() {
     return;
   }
 
-  // 2. Verificar que no queden archivos pendientes o extracciones en los directorios de vigilancia
   for (const dir of WATCH_DIRS) {
     try {
       const files = fs.readdirSync(dir);
       for (const f of files) {
         const l = f.toLowerCase();
-        if ((l.endsWith('.pkg') || l.endsWith('.rar')) && !processed.has(f)) {
-          return;
-        }
+        if ((l.endsWith('.pkg') || l.endsWith('.rar')) && !processed.has(f)) return;
       }
     } catch {}
   }
 
-  // 3. Todo descargado y verificado en PC: auto-arrancar Fase 2 LAN
   lanInstallerStarted = true;
   logPs5(TAG, '🎉 TODAS LAS DESCARGAS COMPLETADAS Y ORGANIZADAS EN DISCO.', LOG_FILE);
-  logPs5(TAG, '🚀 Auto-iniciando Fase 2: Instalador LAN en cascada 1x1...', LOG_FILE);
-  sendTelegramMessage(`🎉 <b>Todas las Descargas Completadas:</b>\n• Todos los juegos están verificados en disco.\n• Iniciando instalación automática a PS5 por LAN...`);
-
-  const lanScript = path.join(__dirname, 'lan_installer.js');
-  const child = spawn(process.execPath, [lanScript], { detached: true, stdio: 'ignore' });
-  child.unref();
+  if (process.env.PS5_AUTO_INSTALL === 'true') {
+    logPs5(TAG, '🚀 Auto-iniciando Fase 2: Instalador LAN...', LOG_FILE);
+    sendTelegramMessage(`🎉 <b>Todas las Descargas Listas:</b>\n• Iniciando instalación a PS5 por LAN...`);
+    const lanScript = path.join(__dirname, 'lan_installer.js');
+    spawn(process.execPath, [lanScript], { detached: true, stdio: 'ignore' }).unref();
+  } else {
+    logPs5(TAG, '⏸️ Instalación en espera (descarga masiva primero / auditoría GLM).', LOG_FILE);
+    sendTelegramMessage(`🎉 <b>Todas las Descargas de la Tanda Listas:</b>\n• Archivos íntegros y organizados en PC.\n• ⏸️ Instalación a PS5 en pausa (auditoría en curso). Listos para instalar.`);
+  }
 }
 
 function main() {
   if (!acquirePid(PID_FILE)) {
-    console.error(`[${TAG}] Ya hay un watcher activo (pidfile ${PID_FILE}). Saliendo.`);
+    console.error(`[${TAG}] Ya hay un watcher activo (${PID_FILE}). Saliendo.`);
     process.exit(1);
   }
-
   process.on('exit', () => releasePid(PID_FILE));
-  process.on('SIGINT', () => {
-    logPs5(TAG, 'Cerrando centinela...', LOG_FILE);
-    process.exit(0);
-  });
-
-  logPs5(TAG, `Centinela IDM blindado iniciado. Watch: ${WATCH_DIRS.join(', ')}, Lib: ${TARGET_DIR}`, LOG_FILE);
-
+  process.on('SIGINT', () => { logPs5(TAG, 'Cerrando centinela...', LOG_FILE); process.exit(0); });
+  logPs5(TAG, `Centinela IDM iniciado. Watch: ${WATCH_DIRS.join(', ')}`, LOG_FILE);
   setInterval(checkNewFiles, 10000);
   checkNewFiles();
 }
