@@ -333,3 +333,33 @@ ps5-host/  webkit-autoloader-host_v0.5.2.py/.exe, host.log, host.err, cert.pem
 - `github.com/EchoStretch/kstuff-lite` (release v1.11: "Supports Firmware 1.00-13.60")
 - `github.com/ntfargo/Relapse-Exploit`
 - YouTube: MODDEDWARFARE, NanospeedGamer, PLAYNOWTOOLS (scrapeados con yt-dlp 2026.08.19)
+
+## 18. Auditoría cruel + premortem (3-oct tarde)
+
+Auditoría completa del repo y de la consola EN VIVO (mientras se descargaban juegos). Informe completo: `AUDIT_Y_PREMORTEM_PS5_2026-10-03.md`. Resumen:
+
+**Verificado OK en consola:** cadena autoload 5/5 DONE, config = canónica, `kstuff_game_auto_toggle=0` persistente, sin `autoload.txt` competidor, hashes de los 5 payloads en consola idénticos a los locales (kstuff `ab9a6cb4`, ftpsrv `7d4b31c8`, SM+ `2a7427e2`, elfldr `ed6d587a`, pkg-receiver `6946d52c` = baseline nuevo), puertos 8084/12800/2121/9021 abiertos, host DNS+HTTPS vivo, firewall activo, tareas `PS5_PC_Pipeline` y tests 33/33.
+
+**Críticos encontrados y corregidos:**
+1. **El watchdog estaba MUERTO desde las 11:41** (pidfile huérfano apuntando a un PID inexistente; nadie lo re-levara hasta el próximo logon). Causas: excepción no capturada lo mató + el código que corría era una versión vieja (mensaje de log "pkg-receiver responde de nuevo" no existe en el código actual) con reparaciones que no arreglaban nada (ignoraba el resultado de `/loadpayload`) y con la ruta fallback de payloads MAL (los dirs internos no se llaman como el .elf: `ftpsrv/ftpsrv-ps5.elf`, `elfldr/elfldr-ps5.elf`…).
+2. **Presupuesto de 8 reparaciones/día se agotaba a media mañana** y quedaba sordo con spam de log cada minuto. Ahora es **por sesión de jailbreak** (se resetea si la consola reinicia) y avisa 1 vez/hora.
+3. **Sin supervivencia:** el watchdog ahora neutraliza `uncaughtException`/`unhandledRejection`; la tarea **`PS5_PC_Pipeline_Loop`** (cada 15 min) re-ejecuta el autostart idempotente como red de seguridad.
+4. **`package.json` no existía** → todos los `npm run ps5:*` documentados estaban rotos. Creado con los scripts correctos.
+
+**Escena 3-oct (scraping en vivo):** Autoloader 0.5.2 sigue siendo la última release (30-sep); kstuff-lite v1.11 sigue siendo la última (hash coincide con el instalado); **Kstuff-NG sigue sin release** (gbatemp "SOON" actualizado hoy; rumor de FPKG en 13.60 vía kstuff-ng beta sin confirmar; EchoStretch: "no ETA"); **OFW 14.10 salió el 1-oct** — no actualizar, Relapse 7.00–13.60 sigue siendo el KEX máximo. No hay razón para tocar la consola: lo instalado es exactamente lo más nuevo y estable de la escena hoy.
+
+## 19. Blindaje para reconstrucción y replicación (3-oct noche)
+
+Objetivo de Jeiser: si se daña el setup, reconstruirlo sin investigar de nuevo; y poder montarlo en otra PS5 con FW < 13.60.
+
+1. **`BLINDADO_RESTAURACION_PS5.md`** (raíz): documento maestro con el estado dorado verificado (hashes/puertos/configs), Escenario A (reconstrucción desde cero: PC 20 min + consola paso a paso + checklist exacto), Escenario B (otra PS5 < 13.60: tabla por rango de FW — Relapse/Autoloader 7.00–13.60, Poops 100% offline 7.00–12.00, PSFree < 7.00, límites de FPKG por kstuff), artefactos locales de recuperación y riesgos residuales.
+2. **`npm run ps5:backup`** (`console_state_backup.js`): snapshot read-only de la consola → `data/backups/console_state/<fecha>/` con MANIFEST.json (hashes), autoload.txt, config.ini de SM+, los 5 payloads byte-exactos de la consola y RESTORE_NOTES.md con los comandos exactos de restauración. Primera snapshot dorada: `2026-10-03T22-10-10` (5/5 payloads hash ok).
+3. **Instalador de recuperación local:** `webkit-autoloader-installer_v0.5.2.elf` (hash `f990e48e` verificado) guardado en `ps5-host/` — si la app WKAL00001 se borra de la consola, se reinstala con `npm run ps5:send-elf` sin internet.
+4. **Pendiente del usuario:** copia externa (USB/Drive) del snapshot más reciente + `ps5-host/` + `.env` — con eso una PC nueva reconstruye todo sin internet.
+
+## 20. Publicación del repo (3-oct noche)
+
+- README público completo ([README.md](README.md)): promesa central (bootstrap por LAN → consola 100% standalone), inicio rápido en 5 pasos, arquitectura, tabla de firmwares, payloads con hashes, troubleshooting y créditos de la escena.
+- Repo renombrado a **`ps5-lan-bootstrap`** y hecho **público** (MIT LICENSE; sin secretos: .env/.pem/binarios gitignored por diseño).
+- Scrub personal: único nombre completo en docs generizado a `@jeiserlabs`.
+- Worktree limpio: hardening del watchdog + snapshot script + docs, commiteados y push a `main`.

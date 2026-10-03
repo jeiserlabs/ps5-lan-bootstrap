@@ -2,7 +2,7 @@
 
 > **Repositorio de Documentación Técnica Aislada:** `E:\ps5`  
 > **Fecha de Consolidación:** 01-OCT-2026 / 02-OCT-2026  
-> **Propietario:** Jeiser Gutiérrez (`@jeiserlabs`)
+> **Mantenimiento:** [@jeiserlabs](https://github.com/jeiserlabs)
 
 ---
 

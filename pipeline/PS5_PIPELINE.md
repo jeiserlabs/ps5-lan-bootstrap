@@ -8,6 +8,7 @@ Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
 | Intención | Comando |
 |---|---|
 | Estado unificado (1 comando) | `npm run ps5:status` |
+| Snapshot del estado dorado de la consola | `npm run ps5:backup` |
 | Auditoría completa PC↔consola | `python pipeline/scripts/audit_full.py [--telegram]` |
 | Watchdog jailbreak (loop) | `node pipeline/scripts/kstuff_watchdog.js` |
 | Watchdog barrido único | `node pipeline/scripts/kstuff_watchdog.js --once` |
@@ -17,8 +18,8 @@ Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
 | Daemon extraer + instalar (loop) | `npm run ps5:daemon` |
 | Servidor LAN de PKGs | `npm run ps5:server` |
 | Enviar ELF a la consola (elfldr) | `npm run ps5:send-elf -- <ruta.elf>` |
-| Estado de la cola y salir | `node scripts/ps5/sequencer.js --status` |
-| Plan de instalación y salir | `node scripts/ps5/daemon.js --status` |
+| Estado de la cola y salir | `node pipeline/scripts/sequencer.js --status` |
+| Plan de instalación y salir | `node pipeline/scripts/daemon.js --status` |
 
 ## Arquitectura
 
@@ -52,7 +53,16 @@ Sintoma histórico: "kstuff funciona y de un momento a otro deja de funcionar". 
 
 Fix doble (3-oct-2026):
 1. **En consola:** `/data/shadowmount/config.ini` → `kstuff_game_auto_toggle=0` (SM+ ya no toca kstuff; backup en `config.ini.bak-20261003`).
-2. **En PC:** `node pipeline/scripts/kstuff_watchdog.js` — cada 60 s chequea 8084/12800/2121; si pkg-receiver o ftpsrv caen, relanza kstuff+pkg-receiver vía `/loadpayload` y avisa por Telegram (máx 8 reparaciones/día, cooldown 10 min). Estado en `data/cache/ps5/kstuff_watchdog_state.json`; log en `data/logs/kstuff_watchdog.log`.
+2. **En PC:** `node pipeline/scripts/kstuff_watchdog.js` — cada 60 s chequea 8084/12800/2121/**9021**; si algo degrada, relanza kstuff → pkg-receiver → ftpsrv → elfldr vía `/loadpayload` (rutas reales verificadas por `/list_payloads`) y avisa por Telegram.
+
+Endurecido tras la auditoría del 3-oct (watchdog muerto desde las 11:41 con pidfile huérfano):
+- Presupuesto de reparaciones **por sesión de jailbreak** (8; se resetea si la consola reinicia) en vez de por día — ya no se queda sordo a media mañana.
+- Sin presupuesto: avisa en el log 1 vez por hora (antes: spam cada minuto).
+- `loadpayload` verifica el HTTP 200 de cada payload y lo reporta individualmente.
+- Timeout FTP 5 s (2.5 s daba falsos CAÍDO con ftpsrv ocupado en transferencias).
+- Inmune a `uncaughtException`/`unhandledRejection`: los registra y sigue vivo.
+- Estado en `data/cache/ps5/kstuff_watchdog_state.json`; log en `data/logs/kstuff_watchdog.log`.
+- **Keepalive PC:** tarea programada `PS5_PC_Pipeline_Loop` re-ejecuta el autostart idempotente cada 15 min — si el watchdog o el servidor LAN mueren a media sesión, se re-levantan solos.
 
 ## Cadena de payloads (autoload, Payload Manager 8084)
 
@@ -62,7 +72,11 @@ Fix doble (3-oct-2026):
 
 ### Autostart del lado PC (3-oct)
 
-Tarea programada de Windows **`PS5_PC_Pipeline`** (ONLOGON, sin admin): ejecuta `pipeline/scripts/ps5_pc_autostart.ps1`, que levanta en oculto el **servidor LAN 9898** y el **watchdog del jailbreak** — idempotente (si ya corren, no duplica). Log: `data/logs/ps5_pc_autostart.log`. Con esto, al encender la PC el pipeline queda operativo solo; en la consola el único paso manual sigue siendo abrir **WebKit Autoloader** tras cada reinicio (tethered).
+Dos tareas programadas de Windows (sin admin):
+- **`PS5_PC_Pipeline`** (ONLOGON): ejecuta `pipeline/scripts/ps5_pc_autostart.ps1`, que levanta en oculto el **servidor LAN 9898**, el **watchdog del jailbreak** y el **host del exploit (DNS+HTTPS)** — idempotente (si ya corren, no duplica). Log: `data/logs/ps5_pc_autostart.log`.
+- **`PS5_PC_Pipeline_Loop`** (cada 15 min, 3-oct): re-ejecuta el mismo script — autocuración si algo muere a media sesión.
+
+En la consola el único paso manual sigue siendo abrir **WebKit Autoloader** tras cada reinicio (tethered).
 
 ### Audit de escena 3-oct (veredicto)
 
@@ -70,6 +84,12 @@ Tarea programada de Windows **`PS5_PC_Pipeline`** (ONLOGON, sin admin): ejecuta 
 - **Exploit más estable para Slim disc 13.40:** Relapse vía **WebKit Autoloader 0.5.2** (ya instalada — es la última versión). Requiere interfaz de red activa: **cable LAN permanente**.
 - elfldr remoto (9021) añadido al autoload: permite empujar payloads desde la PC con `node pipeline/scripts/send_elf.js <archivo.elf>` — listo para el día 1 de Kstuff-NG.
 - **Modo standalone de la PS5 (sin PC):** el exploit vive cacheado en la consola; Relapse solo exige interfaz de red activa (Wi-Fi al router vale). Detalles y reglas: `HISTORIAL-JAILBREAK-PS5.md §13`.
+
+## Blindaje y restauración (3-oct)
+
+Documentación de reconstrucción: **`BLINDADO_RESTAURACION_PS5.md`** (raíz) — estado dorado verificado, Escenario A (reconstrucción desde cero), Escenario B (otra PS5 con FW < 13.60, tabla por rango de FW), artefactos locales de recuperación y riesgos residuales.
+
+Snapshot read-only de la consola: `npm run ps5:backup` → `data/backups/console_state/<fecha>/` (MANIFEST.json con hashes, autoload.txt, config.ini de SM+, los 5 payloads byte-exactos y RESTORE_NOTES.md con los comandos de restauración). Regenerar tras cada cambio en la consola.
 
 ## Reglas de oro
 
