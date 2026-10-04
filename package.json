@@ -22,6 +22,6 @@
     "ps5:install-lan": "node pipeline/scripts/lan_installer.js",
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
-    "test": "node --test pipeline/tests/pkg_validator.test.js pipeline/tests/ps5_pipeline.test.js pipeline/tests/healer_engine.test.js"
+    "test": "node --test pipeline/tests/*.test.js"
   }
 }
