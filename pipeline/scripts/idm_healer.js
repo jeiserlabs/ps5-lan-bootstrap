@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
-const { isStalled, hasQueuedTasks, checkInternetReachability, decideHealerAction } = require('../lib/healer_engine');
+const { isStalled, hasQueuedTasks, checkInternetReachability, isProcessAlive, decideHealerAction } = require('../lib/healer_engine');
 
 const IDM_EXE = 'C:\\Program Files (x86)\\Internet Download Manager\\IDMan.exe';
 const IDM_TEMP_DIR = 'C:\\Users\\dev\\AppData\\Roaming\\IDM\\DwnlData\\dev';
@@ -90,12 +90,13 @@ async function cycle() {
   try {
     const queueStr = getQueueString();
     const hasQueue = hasQueuedTasks(queueStr);
+    const processAlive = isProcessAlive('IDMan.exe');
     const chunkAges = getChunkAgesSec();
     const stalled = isStalled(chunkAges, 45);
     const timeSinceLastKickSec = (Date.now() - lastKickTime) / 1000;
 
     let internetOk = false;
-    if (stalled && hasQueue) {
+    if (stalled && hasQueue && processAlive) {
       internetOk = await checkInternetReachability('https://1.1.1.1', 3000);
       if (!internetOk) {
         internetOk = await checkInternetReachability('https://www.google.com', 3000);
@@ -103,13 +104,27 @@ async function cycle() {
     }
 
     const action = decideHealerAction({
+      processAlive,
       stalled,
       hasQueue,
       internetOk,
       timeSinceLastKickSec
     }, COOLDOWN_SEC);
 
-    if (action === 'KICK_RESUME') {
+    if (action === 'RESTART_PROCESS') {
+      log('🚨 IDMan.exe NO ESTÁ CORRIENDO (cerrado o caído). Relanzando proceso...');
+      lastKickTime = Date.now();
+      try {
+        spawn(IDM_EXE, [], { detached: true, stdio: 'ignore' }).unref();
+        setTimeout(() => {
+          spawn(IDM_EXE, ['/s'], { detached: true, stdio: 'ignore' }).unref();
+        }, 3000);
+        log('✅ IDMan.exe relanzado y cola reanudada con éxito.');
+        sendTelegramAlert('🚨 *[AUTO-HEALER]* IDMan.exe se había cerrado o caído. Proceso relanzado y cola reanudada automáticamente.');
+      } catch (e) {
+        log(`❌ Error al relanzar IDMan.exe: ${e.message}`);
+      }
+    } else if (action === 'KICK_RESUME') {
       log('⚠️ Micro-corte / estancamiento detectado (>45s inactivo). Internet verificado OK.');
       log('⚡ Reanudando cola IDM automáticamente...');
       lastKickTime = Date.now();

@@ -37,4 +37,8 @@ test('healer_engine — decideHealerAction', () => {
 
   // Caso 5: Estancado, internet OK, cooldown superado -> KICK_RESUME
   assert.equal(decideHealerAction({ hasQueue: true, stalled: true, internetOk: true, timeSinceLastKickSec: 75 }, 60), 'KICK_RESUME');
+
+  // Caso 6: Proceso cerrado / muerto -> RESTART_PROCESS inmediato
+  assert.equal(decideHealerAction({ hasQueue: true, processAlive: false, stalled: true, internetOk: true, timeSinceLastKickSec: 0 }), 'RESTART_PROCESS');
 });
+

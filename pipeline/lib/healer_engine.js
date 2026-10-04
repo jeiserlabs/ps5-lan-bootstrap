@@ -59,17 +59,34 @@ function checkInternetReachability(probeUrl = 'https://1.1.1.1', timeoutMs = 300
 }
 
 /**
+ * Comprueba si un proceso está vivo en Windows mediante tasklist.
+ * @param {string} processName (ej: 'IDMan.exe')
+ * @returns {boolean}
+ */
+function isProcessAlive(processName) {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return out.toLowerCase().includes(processName.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Decide la acción de sanación basándose en el estado actual.
  * @param {Object} state
+ * @param {boolean} [state.processAlive=true]
  * @param {boolean} state.stalled
  * @param {boolean} state.hasQueue
  * @param {boolean} state.internetOk
  * @param {number} state.timeSinceLastKickSec
  * @param {number} cooldownSec
- * @returns {'KICK_RESUME' | 'WAIT_INTERNET' | 'HEALTHY' | 'IDLE'}
+ * @returns {'RESTART_PROCESS' | 'KICK_RESUME' | 'WAIT_INTERNET' | 'HEALTHY' | 'IDLE'}
  */
 function decideHealerAction(state, cooldownSec = 60) {
   if (!state.hasQueue) return 'IDLE';
+  if (state.processAlive === false) return 'RESTART_PROCESS';
   if (!state.stalled) return 'HEALTHY';
   if (!state.internetOk) return 'WAIT_INTERNET';
   if (state.timeSinceLastKickSec < cooldownSec) return 'HEALTHY';
@@ -80,5 +97,7 @@ module.exports = {
   isStalled,
   hasQueuedTasks,
   checkInternetReachability,
+  isProcessAlive,
   decideHealerAction
 };
+
