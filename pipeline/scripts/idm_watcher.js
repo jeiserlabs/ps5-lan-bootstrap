@@ -53,9 +53,8 @@ function isFileLocked(filePath) {
     const fd = fs.openSync(filePath, 'r+');
     fs.closeSync(fd);
     return false;
-  } catch (err) {
-    if (err && (err.code === 'EBUSY' || err.code === 'EPERM')) return true;
-    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -84,29 +83,34 @@ function handlePkgFile(fullPath, filename) {
   if (result.valid) {
     const sizeGb = (result.info.sizeBytes / (1024 ** 3)).toFixed(2);
     logPs5(TAG, `✅ APROBADO: [${result.info.titleId}] ${result.info.title} (${sizeGb} GB) es 100% ÍNTEGRO`, LOG_FILE);
-
-    // Organizar en carpeta del juego
     const gameFolder = resolveGameFolder(TARGET_DIR, result.info.title, result.info.titleId);
     const moveRes = moveFileToGameFolder(fullPath, gameFolder, LOG_FILE);
-
     if (moveRes.success) {
       processed.add(filename);
       lastSizes.delete(filename);
     }
   } else {
     logPs5(TAG, `❌ RECHAZADO: ${filename} fallo validacion: ${result.errors.join('; ')}`, LOG_FILE);
-    try {
-      fs.renameSync(fullPath, `${fullPath}.corrupt`);
-      logPs5(TAG, `⚠️ Cuarentena: ${fullPath}.corrupt`, LOG_FILE);
-    } catch (renErr) {
-      logPs5(TAG, `No se pudo renombrar corrupto: ${renErr.message}`, LOG_FILE);
-    }
+    try { fs.renameSync(fullPath, `${fullPath}.corrupt`); } catch {}
     processed.add(filename);
     lastSizes.delete(filename);
   }
 }
 
 const lastRarAttempt = new Map();
+let isExtracting = false;
+let lastExtractionFinishedAt = 0;
+
+function isAnyFileBusy(current) {
+  for (const d of WATCH_DIRS) {
+    try {
+      for (const f of fs.readdirSync(d)) {
+        if (f !== current && (f.endsWith('.pkg') || f.endsWith('.rar')) && isFileLocked(path.join(d, f))) return true;
+      }
+    } catch {}
+  }
+  return false;
+}
 
 function findStagedPkgs(dir) {
   const list = [];
@@ -123,26 +127,35 @@ function findStagedPkgs(dir) {
 function handleRarArchive(fullPath, filename) {
   const multi = inspectMultiPart(filename);
   if (multi.isMultiPart && multi.partNum !== 1) return;
+  if (isExtracting || Date.now() - lastExtractionFinishedAt < 15000) return;
+  if (isAnyFileBusy(filename)) {
+    logPs5(TAG, `⏳ IDM reconstruyendo/escribiendo. Descompresión de ${filename} en espera...`, LOG_FILE);
+    return;
+  }
 
   const lastAttempt = lastRarAttempt.get(filename) || 0;
   if (Date.now() - lastAttempt < 60000) return;
   lastRarAttempt.set(filename, Date.now());
 
-  logPs5(TAG, `📦 Iniciando descompresion automatica de ${filename}...`, LOG_FILE);
-  const extRes = extractArchive(fullPath, STAGING_DIR, LOG_FILE);
-  if (!extRes.success) {
-    logPs5(TAG, `⚠️ Descompresion pendiente/incompleta: ${extRes.error}`, LOG_FILE);
-    return;
-  }
-
-  const stagedPkgs = findStagedPkgs(STAGING_DIR);
-  for (const pkgPath of stagedPkgs) handlePkgFile(pkgPath, path.basename(pkgPath));
-
-  if (stagedPkgs.length > 0) {
-    cleanupArchiveVolumes(fullPath, LOG_FILE);
-    processed.add(filename);
-    lastSizes.delete(filename);
-    try { fs.rmSync(STAGING_DIR, { recursive: true, force: true }); } catch {}
+  isExtracting = true;
+  try {
+    logPs5(TAG, `📦 Descompresión segura (1x1, carga balanceada <= 2 hilos): ${filename}...`, LOG_FILE);
+    const extRes = extractArchive(fullPath, STAGING_DIR, LOG_FILE);
+    if (!extRes.success) {
+      logPs5(TAG, `⚠️ Descompresión pendiente: ${extRes.error}`, LOG_FILE);
+      return;
+    }
+    const stagedPkgs = findStagedPkgs(STAGING_DIR);
+    for (const pkgPath of stagedPkgs) handlePkgFile(pkgPath, path.basename(pkgPath));
+    if (stagedPkgs.length > 0) {
+      cleanupArchiveVolumes(fullPath, LOG_FILE);
+      processed.add(filename);
+      lastSizes.delete(filename);
+      try { fs.rmSync(STAGING_DIR, { recursive: true, force: true }); } catch {}
+    }
+  } finally {
+    isExtracting = false;
+    lastExtractionFinishedAt = Date.now();
   }
 }
 
@@ -180,7 +193,7 @@ function checkNewFiles() {
       const timeSinceMod = now - stat.mtimeMs;
       const expectedSize = isPkg ? getExpectedSize(fullPath) : 0;
 
-      if (locked || stat.size !== prevSize || (expectedSize > 0 && stat.size < expectedSize) || timeSinceMod < 15000) {
+      if (locked || stat.size !== prevSize || (expectedSize > 0 && stat.size < expectedSize) || timeSinceMod < 45000) {
         lastSizes.set(file, stat.size);
         const sizeGb = (stat.size / (1024 ** 3)).toFixed(2);
         const expStr = expectedSize > 0 ? ` / ${(expectedSize / (1024 ** 3)).toFixed(2)} GB` : '';
@@ -207,22 +220,20 @@ const idmNotified = new Set();
 function checkIdmEvents() {
   try {
     const qOut = execSync('reg query HKCU\\Software\\DownloadManager', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
-    const matches = qOut.match(/DownloadManager\\(\d+)/g);
-    if (!matches) return;
+    const matches = qOut.match(/DownloadManager\\(\d+)/g) || [];
     for (const m of matches) {
       const id = m.split('\\').pop();
       if (idmNotified.has(id)) continue;
       try {
         const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
         const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/);
-        const st = stM ? parseInt(stM[1], 16) : 0;
-        if (st === 3) {
+        if (stM && parseInt(stM[1], 16) === 3) {
           idmNotified.add(id);
           let name = `Descarga #${id}`;
           try {
             const fnOut = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v FileName`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
             const fnM = fnOut.match(/FileName\s+REG_SZ\s+(.*)$/m);
-            if (fnM) name = (fnM[1].trim().split('?')[0]);
+            if (fnM) name = fnM[1].trim().split('?')[0];
           } catch {}
           logPs5(TAG, `🎉 IDM completó descarga: ${name}`, LOG_FILE);
         }
@@ -235,31 +246,22 @@ let lanInstallerStarted = false;
 
 function checkAutoTransition() {
   if (lanInstallerStarted) return;
-
   try {
     const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 2000 });
     const qM = qOut.match(/Queue\s+REG_SZ\s+(.*)$/m);
     const queueIds = qM ? qM[1].trim().split(/\s+/).filter(Boolean) : [];
     if (queueIds.length === 0) return;
-
     for (const id of queueIds) {
-      try {
-        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
-        const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-        const st = stM ? parseInt(stM[1], 16) : 0;
-        if (st !== 3 && st !== 5) return;
-      } catch {
-        return;
-      }
+      const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
+      const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
+      const st = stM ? parseInt(stM[1], 16) : 0;
+      if (st !== 3 && st !== 5) return;
     }
-  } catch {
-    return;
-  }
+  } catch { return; }
 
   for (const dir of WATCH_DIRS) {
     try {
-      const files = fs.readdirSync(dir);
-      for (const f of files) {
+      for (const f of fs.readdirSync(dir)) {
         const l = f.toLowerCase();
         if ((l.endsWith('.pkg') || l.endsWith('.rar')) && !processed.has(f)) return;
       }
@@ -270,8 +272,7 @@ function checkAutoTransition() {
   logPs5(TAG, '🎉 TODAS LAS DESCARGAS COMPLETADAS Y ORGANIZADAS EN DISCO.', LOG_FILE);
   if (process.env.PS5_AUTO_INSTALL === 'true') {
     logPs5(TAG, '🚀 Auto-iniciando Fase 2: Instalador LAN...', LOG_FILE);
-    const lanScript = path.join(__dirname, 'lan_installer.js');
-    spawn(process.execPath, [lanScript], { detached: true, stdio: 'ignore' }).unref();
+    spawn(process.execPath, [path.join(__dirname, 'lan_installer.js')], { detached: true, stdio: 'ignore' }).unref();
   } else {
     logPs5(TAG, '⏸️ Instalación en espera (descarga masiva primero / auditoría GLM).', LOG_FILE);
   }

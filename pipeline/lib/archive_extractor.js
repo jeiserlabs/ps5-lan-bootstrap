@@ -70,7 +70,7 @@ function extractArchive(archivePath, outDir, logFile) {
     // Verificar si todos los volúmenes del juego ya están presentes en disco
     let volumesReady = false;
     for (const pwd of PASSWORDS) {
-      const testProc = spawnSync(SEVEN_ZIP, ['t', archivePath, `-p${pwd}`, '-y'], {
+      const testProc = spawnSync(SEVEN_ZIP, ['t', archivePath, `-p${pwd}`, '-mmt=2', '-y'], {
         encoding: 'utf8',
         maxBuffer: 4 * 1024 * 1024,
       });
@@ -93,8 +93,8 @@ function extractArchive(archivePath, outDir, logFile) {
   for (const pwd of PASSWORDS) {
     let proc;
     if (tool === '7z') {
-      // 7z x "<archive>" -o"<outDir>" -p"<pwd>" -y
-      proc = spawnSync(SEVEN_ZIP, ['x', archivePath, `-o${outDir}`, `-p${pwd}`, '-y'], {
+      // 7z x "<archive>" -o"<outDir>" -p"<pwd>" -mmt=2 -y (balanceo CPU <= 2 hilos)
+      proc = spawnSync(SEVEN_ZIP, ['x', archivePath, `-o${outDir}`, `-p${pwd}`, '-mmt=2', '-y'], {
         encoding: 'utf8',
         maxBuffer: 32 * 1024 * 1024,
       });
