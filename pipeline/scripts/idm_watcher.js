@@ -19,8 +19,14 @@ const { resolveGameFolder, moveFileToGameFolder } = require('../lib/library_orga
 const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
-const WATCH_DIRS = [cfg.paths.watchDir, 'C:\\Users\\dev\\Downloads\\Compressed', 'C:\\Users\\dev\\Downloads'].filter((d) => fs.existsSync(d));
-const TARGET_DIR = cfg.paths.libraryDirs[0]; // C:\Biblioteca_Juegos_PS
+const WATCH_DIRS = Array.from(new Set([
+  cfg.paths.watchDir,
+  'E:\\',
+  'C:\\Users\\dev\\Desktop',
+  'C:\\Users\\dev\\Downloads\\Compressed',
+  'C:\\Users\\dev\\Downloads',
+].filter((d) => d && fs.existsSync(d))));
+const TARGET_DIR = cfg.paths.libraryDirs[0];
 const STAGING_DIR = path.join(TARGET_DIR, '_staging');
 const PID_FILE = path.join(cfg.state.cacheDir, 'idm_watcher.pid');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'idm_watcher.log');
