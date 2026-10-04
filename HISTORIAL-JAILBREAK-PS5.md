@@ -443,4 +443,20 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - **Total Colección:** 619.79 GB.
 - **Espacio Libre en PS5 tras instalar los 12 juegos:** **+47.41 GB LIBRES**.
 
+## 24. Centinela Anti-Microcortes y Auto-Sanación de IDM (`idm_healer.js`) (4-oct tarde)
+
+**1. Incidente de Microcorte (11:41 AM):**
+- Un microcorte transitorio de red/DNS interrumpió las conexiones activas de IDM.
+- IDM arrojó `No se puede encontrar el servidor download...` y detuvo la cola global.
+- Diagnóstico forense: Las 15 partes de MediaFire mantuvieron estado HTTP 200 íntegro. Solo los 4 enlaces de AkiraBox expiraron sus tokens temporales firmados por inactividad.
+
+**2. Arquitectura de Auto-Sanación (`pipeline/lib/healer_engine.js` y `pipeline/scripts/idm_healer.js`):**
+- **Detección de Estancamiento:** Monitorea timestamps de escritura (`mtime`) en los chunks de descarga temporales (`DwnlData\dev`). Si ningún archivo recibe datos durante >45s y la cola tiene tareas pendientes, detecta bloqueo.
+- **Probe de Red y Conectividad:** Realiza sondeo HTTP HEAD ultrarrápido contra `1.1.1.1` y `google.com` (timeout 3000ms).
+- **Auto-Reactivación Fail-Closed:** Al confirmar red activa tras una caída, despacha `IDMan.exe /s` (Start Queue) desacoplado en segundo plano con cooldown de 60s anti-rebote.
+- **Alertas Telegram:** Notificación en tiempo real al canal privado de Jeiser ante eventos de auto-recuperación.
+- **Reordenamiento Inteligente de Cola:** Tareas 100% vivas de MediaFire (MLB, Tsushima, GoW) priorizadas al inicio de la cola para descarga ininterrumpida; enlaces pendientes de refresco desplazados al final.
+- **Test Suite:** 39/39 pruebas pasando verde (`npm test`).
+
+
 
