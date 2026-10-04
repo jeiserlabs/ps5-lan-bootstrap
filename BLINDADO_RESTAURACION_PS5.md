@@ -157,3 +157,23 @@ npm test                                                          # 33/33
 | Auditoría PC↔consola completa | `npm run ps5:audit` |
 | Restaurar cadena autoload | ver `RESTORE_NOTES.md` del snapshot más reciente |
 
+## 8. Protocolo ante Semibrick y Modo Seguro (Disaster Recovery)
+
+Si la consola entra en loop de reinicios o falla el arranque del sistema operativo tras un crash de kernel:
+
+### 8.1. Entrada a Modo Seguro (Safe Mode)
+1. Apagar la PS5 por completo (presionar botón de encendido hasta que la luz blanca se apague).
+2. Mantener presionado el botón de encendido durante **7 segundos** hasta escuchar un **segundo pitido**.
+3. Conectar el mando DualSense mediante cable USB y pulsar el botón **PS**.
+
+### 8.2. Opciones de Recuperación Permitidas vs Prohibidas
+* **Opción 5: Reconstruir base de datos (Rebuild Database):**
+  * **SEGURA.** Reorganiza la base de datos de juegos y repara corrupción de metadata. **NO** altera el firmware ni borra partidas.
+* **Opción 6: Restablecer PS5 (Reset Console):**
+  * Borra la configuración de usuario y caché WebKit. Requiere volver a ejecutar el bootstrap inicial (§3.A2), pero **mantiene intacta la versión de firmware vulnerable**.
+* **Opción 7: Reinstalar software del sistema (USB Recovery):**
+  * **PELIGRO CRÍTICO.** Solo debe usarse si el sistema de archivos está 100% destruido.
+  * **REGLA INQUEBRANTABLE:** Descargar únicamente el archivo de recuperación **Recovery PUP de la versión exacta actual (FW 13.40)**.
+  * Estructura en USB FAT32/exFAT: `PS5/UPDATE/PS5UPDATE.PUP`.
+  * Verificar hash SHA256 del PUP antes de conectar a la consola. **NUNCA** conectar internet ni usar actualización por red (instalaría el firmware oficial más reciente, eliminando el jailbreak de por vida).
+
