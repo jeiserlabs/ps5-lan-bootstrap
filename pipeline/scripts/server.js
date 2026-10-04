@@ -14,6 +14,7 @@ const path = require('node:path');
 const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
+const { sanitizeFilename, isPathInside } = require('../lib/security.js');
 
 const cfg = getPs5Config();
 const TAG = 'SERVER';
@@ -62,7 +63,7 @@ function resolvePkg(filename) {
   for (const dir of cfg.paths.libraryDirs) {
     const exact = path.join(dir, filename);
     try {
-      if (fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
+      if (isPathInside(dir, exact) && fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
         const res = { filePath: exact, fuzzy: false };
         pkgPathCache.set(filename, res);
         return res;
@@ -113,7 +114,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const filename = path.basename(urlPath);
+  const filename = sanitizeFilename(path.basename(urlPath));
   const resolved = resolvePkg(filename);
   if (!resolved) {
     logPs5(TAG, `404 NOT FOUND: ${filename}`, cfg.state.logFile);

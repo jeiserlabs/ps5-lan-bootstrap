@@ -9,12 +9,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-
-function sanitizeFilename(input) {
-  if (typeof input !== 'string') return '';
-  const decoded = decodeURIComponent(input);
-  return path.basename(decoded).replace(/[^a-zA-Z0-9._\-+()[\] ]/g, '');
-}
+const { sanitizeFilename, isPathInside } = require('../lib/security.js');
 
 test('Seguridad — Sanitización Estricta Anti-Path Traversal', async (t) => {
   await t.test('1. Neutraliza secuencias relativas estilo UNIX (../../etc/passwd)', () => {

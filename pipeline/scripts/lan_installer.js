@@ -13,6 +13,7 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
+const { sanitizeFilename } = require('../lib/security.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
@@ -169,7 +170,7 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category) {
 }
 
 async function installPkg(pkgPath, dryRun = false) {
-  const filename = path.basename(pkgPath);
+  const filename = sanitizeFilename(path.basename(pkgPath));
   const audit = validatePkg(pkgPath);
 
   if (!audit.valid) {

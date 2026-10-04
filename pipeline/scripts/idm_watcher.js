@@ -16,6 +16,7 @@ const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { extractArchive, cleanupArchiveVolumes, inspectMultiPart } = require('../lib/archive_extractor.js');
 const { resolveGameFolder, moveFileToGameFolder, getBestTargetLibrary, offloadCompletedGames } = require('../lib/library_organizer.js');
+const { sanitizeFilename } = require('../lib/security.js');
 
 const cfg = getPs5Config();
 const WATCH_DIRS = Array.from(new Set([
@@ -176,6 +177,8 @@ function checkNewFiles() {
     }
 
     for (const file of entries) {
+      const sanitized = sanitizeFilename(file);
+      if (!sanitized || sanitized !== file) continue;
       const lower = file.toLowerCase();
       const isPkg = lower.endsWith('.pkg');
       const isRar = lower.endsWith('.rar');

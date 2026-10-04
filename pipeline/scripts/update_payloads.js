@@ -2,8 +2,7 @@
 /**
  * @file update_payloads.js
  * @description Comprobador y actualizador automatizado de payloads dorados de PS5.
- *   Consulta las APIs oficiales de GitHub (EchoStretch, ps5-payload-dev, drakmor, itsPLK),
- *   valida versiones contra hashes locales y reporta actualizaciones disponibles.
+ *   Incluye verificación estricta SHA256, backup pre-escritura y rollback automático.
  * SRP < 180L. Cero dependencias externas.
  */
 'use strict';
@@ -48,6 +47,49 @@ function getLocalFileHash(filePath) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
+/**
+ * Crea copia de respaldo previa antes de cualquier modificación.
+ */
+function backupPayload(targetFile, backupRootDir) {
+  if (!fs.existsSync(targetFile)) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const destDir = path.join(backupRootDir, stamp);
+  fs.mkdirSync(destDir, { recursive: true });
+  const backupPath = path.join(destDir, path.basename(targetFile));
+  fs.copyFileSync(targetFile, backupPath);
+  return backupPath;
+}
+
+/**
+ * Aplica actualización con validación criptográfica y rollback automático ante fallo.
+ */
+function applyPayloadWithRollback(targetFile, newBuffer, expectedSha256, backupRootDir) {
+  // 1. Verificación previa de hash
+  const computedHash = crypto.createHash('sha256').update(newBuffer).digest('hex');
+  if (expectedSha256 && computedHash.toLowerCase() !== expectedSha256.toLowerCase()) {
+    return { success: false, error: `Hash mismatch: esperado ${expectedSha256}, calculado ${computedHash}` };
+  }
+
+  // 2. Backup previo si el archivo existe
+  const backupPath = backupPayload(targetFile, backupRootDir);
+
+  // 3. Escritura atómica
+  const tmpPath = `${targetFile}.tmp-${Date.now()}`;
+  try {
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.writeFileSync(tmpPath, newBuffer);
+    fs.renameSync(tmpPath, targetFile);
+    return { success: true, backupPath, sha256: computedHash };
+  } catch (err) {
+    // 4. Rollback ante fallo
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+    if (backupPath && fs.existsSync(backupPath)) {
+      try { fs.copyFileSync(backupPath, targetFile); } catch {}
+    }
+    return { success: false, error: `Escritura falló, rollback ejecutado: ${err.message}` };
+  }
+}
+
 async function checkPayloadUpdates(dryRun = true) {
   console.log('🔍 Consultando actualizaciones de payloads oficiales en GitHub...\n');
   const payloadDir = path.join(__dirname, '..', '..', 'payloads');
@@ -86,4 +128,9 @@ if (require.main === module) {
   checkPayloadUpdates(isDryRun);
 }
 
-module.exports = { checkPayloadUpdates };
+module.exports = {
+  checkPayloadUpdates,
+  backupPayload,
+  applyPayloadWithRollback,
+  getLocalFileHash,
+};
