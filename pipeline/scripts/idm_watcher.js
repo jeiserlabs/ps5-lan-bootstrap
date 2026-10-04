@@ -15,21 +15,24 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { extractArchive, cleanupArchiveVolumes, inspectMultiPart } = require('../lib/archive_extractor.js');
-const { resolveGameFolder, moveFileToGameFolder } = require('../lib/library_organizer.js');
+const { resolveGameFolder, moveFileToGameFolder, getBestTargetLibrary, offloadCompletedGames } = require('../lib/library_organizer.js');
 
 const cfg = getPs5Config();
 const WATCH_DIRS = Array.from(new Set([
   cfg.paths.watchDir,
   'E:\\',
+  'C:\\Biblioteca_Juegos_PS',
   'C:\\Users\\dev\\Desktop',
   'C:\\Users\\dev\\Downloads\\Compressed',
   'C:\\Users\\dev\\Downloads',
 ].filter((d) => d && fs.existsSync(d))));
-const TARGET_DIR = cfg.paths.libraryDirs[0];
-const STAGING_DIR = path.join(TARGET_DIR, '_staging');
 const PID_FILE = path.join(cfg.state.cacheDir, 'idm_watcher.pid');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'idm_watcher.log');
 const TAG = 'IDM_WATCHER';
+
+function getBestTargetDir(source) {
+  return getBestTargetLibrary(source, LOG_FILE);
+}
 
 /** @type {Map<string, number>} */
 const lastSizes = new Map();
@@ -39,11 +42,9 @@ const processed = new Set();
 function ensureIdmAlive() {
   try {
     const stdout = execSync('tasklist /FI "IMAGENAME eq IDMan.exe" /NH', { encoding: 'utf8' });
-    if (!stdout.toLowerCase().includes('idman.exe')) {
+    if (!stdout.toLowerCase().includes('idman.exe') && fs.existsSync(cfg.paths.idmExe)) {
       logPs5(TAG, '⚠️ IDM cerrado. Guardián auto-relanzando con /s...', LOG_FILE);
-      if (fs.existsSync(cfg.paths.idmExe)) {
-        spawn(cfg.paths.idmExe, ['/s'], { detached: true, stdio: 'ignore' }).unref();
-      }
+      spawn(cfg.paths.idmExe, ['/s'], { detached: true, stdio: 'ignore' }).unref();
     }
   } catch {}
 }
@@ -83,7 +84,8 @@ function handlePkgFile(fullPath, filename) {
   if (result.valid) {
     const sizeGb = (result.info.sizeBytes / (1024 ** 3)).toFixed(2);
     logPs5(TAG, `✅ APROBADO: [${result.info.titleId}] ${result.info.title} (${sizeGb} GB) es 100% ÍNTEGRO`, LOG_FILE);
-    const gameFolder = resolveGameFolder(TARGET_DIR, result.info.title, result.info.titleId);
+    const targetDir = getBestTargetDir(fullPath);
+    const gameFolder = resolveGameFolder(targetDir, result.info.title, result.info.titleId);
     const moveRes = moveFileToGameFolder(fullPath, gameFolder, LOG_FILE);
     if (moveRes.success) {
       processed.add(filename);
@@ -138,20 +140,22 @@ function handleRarArchive(fullPath, filename) {
   lastRarAttempt.set(filename, Date.now());
 
   isExtracting = true;
+  const targetDir = getBestTargetDir(fullPath);
+  const stagingDir = path.join(targetDir, '_staging');
   try {
     logPs5(TAG, `📦 Descompresión segura (1x1, carga balanceada <= 2 hilos): ${filename}...`, LOG_FILE);
-    const extRes = extractArchive(fullPath, STAGING_DIR, LOG_FILE);
+    const extRes = extractArchive(fullPath, stagingDir, LOG_FILE);
     if (!extRes.success) {
       logPs5(TAG, `⚠️ Descompresión pendiente: ${extRes.error}`, LOG_FILE);
       return;
     }
-    const stagedPkgs = findStagedPkgs(STAGING_DIR);
+    const stagedPkgs = findStagedPkgs(stagingDir);
     for (const pkgPath of stagedPkgs) handlePkgFile(pkgPath, path.basename(pkgPath));
     if (stagedPkgs.length > 0) {
       cleanupArchiveVolumes(fullPath, LOG_FILE);
       processed.add(filename);
       lastSizes.delete(filename);
-      try { fs.rmSync(STAGING_DIR, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
     }
   } finally {
     isExtracting = false;
@@ -210,6 +214,10 @@ function checkNewFiles() {
     }
   }
 
+  if (!isExtracting && !isAnyFileBusy('')) {
+    offloadCompletedGames('E:\\Biblioteca_Juegos_PS', 'C:\\Biblioteca_Juegos_PS', 160, LOG_FILE);
+  }
+
   checkIdmEvents();
   checkAutoTransition();
 }
@@ -220,8 +228,7 @@ const idmNotified = new Set();
 function checkIdmEvents() {
   try {
     const qOut = execSync('reg query HKCU\\Software\\DownloadManager', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
-    const matches = qOut.match(/DownloadManager\\(\d+)/g) || [];
-    for (const m of matches) {
+    for (const m of (qOut.match(/DownloadManager\\(\d+)/g) || [])) {
       const id = m.split('\\').pop();
       if (idmNotified.has(id)) continue;
       try {
@@ -229,13 +236,7 @@ function checkIdmEvents() {
         const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/);
         if (stM && parseInt(stM[1], 16) === 3) {
           idmNotified.add(id);
-          let name = `Descarga #${id}`;
-          try {
-            const fnOut = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v FileName`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
-            const fnM = fnOut.match(/FileName\s+REG_SZ\s+(.*)$/m);
-            if (fnM) name = fnM[1].trim().split('?')[0];
-          } catch {}
-          logPs5(TAG, `🎉 IDM completó descarga: ${name}`, LOG_FILE);
+          logPs5(TAG, `🎉 IDM completó descarga #${id}`, LOG_FILE);
         }
       } catch {}
     }
@@ -279,10 +280,7 @@ function checkAutoTransition() {
 }
 
 function main() {
-  if (!acquirePid(PID_FILE)) {
-    console.error(`[${TAG}] Ya hay un watcher activo (${PID_FILE}). Saliendo.`);
-    process.exit(1);
-  }
+  if (!acquirePid(PID_FILE)) { console.error(`[${TAG}] Ya hay un watcher activo (${PID_FILE}). Saliendo.`); process.exit(1); }
   process.on('exit', () => releasePid(PID_FILE));
   process.on('SIGINT', () => { logPs5(TAG, 'Cerrando centinela...', LOG_FILE); process.exit(0); });
   logPs5(TAG, `Centinela IDM iniciado. Watch: ${WATCH_DIRS.join(', ')}`, LOG_FILE);

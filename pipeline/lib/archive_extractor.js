@@ -64,15 +64,21 @@ function extractArchive(archivePath, outDir, logFile) {
   const multi = inspectMultiPart(path.basename(archivePath));
   if (multi.isMultiPart) {
     if (multi.partNum !== 1) {
-      // Solo se debe iniciar la extracción desde el part1
       return { success: false, extractedFiles: [], error: 'Ignorando: no es el volumen part1.' };
+    }
+    // Verificación rápida: si part2 ni siquiera existe en disco, abortar sin llamar a 7z
+    const dir = path.dirname(archivePath);
+    const part2Name = path.basename(archivePath).replace(/\.part0*1\.rar$/i, '.part2.rar');
+    if (!fs.existsSync(path.join(dir, part2Name))) {
+      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos (part2 ausente). Esperando descarga en IDM.' };
     }
     // Verificar si todos los volúmenes del juego ya están presentes en disco
     let volumesReady = false;
     for (const pwd of PASSWORDS) {
-      const testProc = spawnSync(SEVEN_ZIP, ['t', archivePath, `-p${pwd}`, '-mmt=2', '-y'], {
+      const testProc = spawnSync(SEVEN_ZIP, ['t', archivePath, `-p${pwd}`, '-mmt=2', '-y', '-bso0', '-bse0', '-bsp0'], {
         encoding: 'utf8',
         maxBuffer: 4 * 1024 * 1024,
+        timeout: 20000,
       });
       if (testProc.status === 0) {
         volumesReady = true;
@@ -80,9 +86,34 @@ function extractArchive(archivePath, outDir, logFile) {
       }
     }
     if (!volumesReady) {
-      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos. Esperando descarga de partes restantes.' };
+      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos o corruptos. Esperando partes restantes.' };
     }
   }
+
+  // Pre-verificación estricta de espacio en disco destino (suma todas las partes + 30 GB de reserva)
+  try {
+    let totalArchiveBytes = 0;
+    const dir = path.dirname(archivePath);
+    if (multi.isMultiPart && multi.basePattern) {
+      for (const f of fs.readdirSync(dir)) {
+        if (f.toLowerCase().startsWith(multi.basePattern.toLowerCase()) && f.toLowerCase().endsWith('.rar')) {
+          try { totalArchiveBytes += fs.statSync(path.join(dir, f)).size; } catch {}
+        }
+      }
+    } else {
+      totalArchiveBytes = fs.statSync(archivePath).size;
+    }
+
+    const targetRoot = path.parse(path.resolve(outDir)).root;
+    const s = fs.statfsSync(targetRoot);
+    const freeBytes = s.bfree * s.bsize;
+    const requiredBytes = (totalArchiveBytes * 1.05) + (30 * 1024 ** 3);
+    if (freeBytes < requiredBytes) {
+      const freeGb = (freeBytes / (1024 ** 3)).toFixed(1);
+      const reqGb = (requiredBytes / (1024 ** 3)).toFixed(1);
+      return { success: false, extractedFiles: [], error: `Espacio insuficiente en ${targetRoot} (${freeGb} GB libres < ${reqGb} GB requeridos con reserva de 30 GB).` };
+    }
+  } catch {}
 
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -93,16 +124,18 @@ function extractArchive(archivePath, outDir, logFile) {
   for (const pwd of PASSWORDS) {
     let proc;
     if (tool === '7z') {
-      // 7z x "<archive>" -o"<outDir>" -p"<pwd>" -mmt=2 -y (balanceo CPU <= 2 hilos)
-      proc = spawnSync(SEVEN_ZIP, ['x', archivePath, `-o${outDir}`, `-p${pwd}`, '-mmt=2', '-y'], {
+      // 7z x "<archive>" -o"<outDir>" -p"<pwd>" -mmt=2 -y -bso0 -bse0 -bsp0 (<= 2 hilos, timeout 45m)
+      proc = spawnSync(SEVEN_ZIP, ['x', archivePath, `-o${outDir}`, `-p${pwd}`, '-mmt=2', '-y', '-bso0', '-bse0', '-bsp0'], {
         encoding: 'utf8',
-        maxBuffer: 32 * 1024 * 1024,
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 45 * 60 * 1000,
       });
     } else {
       // unrar x -p<pwd> -y "<archive>" "<outDir>\"
       proc = spawnSync(UNRAR_EXE, ['x', `-p${pwd}`, '-y', archivePath, `${outDir}\\`], {
         encoding: 'utf8',
-        maxBuffer: 32 * 1024 * 1024,
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 45 * 60 * 1000,
       });
     }
 

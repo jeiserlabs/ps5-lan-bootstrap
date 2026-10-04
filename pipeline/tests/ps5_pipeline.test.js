@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPkg, getTitleId, planInstallOrder } from '../lib/pkg_rules.js';
 import { getPs5Config } from '../lib/config.js';
+import { sanitizeFolderName, resolveGameFolder, getBestTargetLibrary } from '../lib/library_organizer.js';
 import {
   STATUS,
   createState,
@@ -251,3 +252,21 @@ describe('queue_state — backoff y reconciliación', () => {
     assert.equal(summary.next, 'B [injected]');
   });
 });
+
+describe('library_organizer — sanitización y balanceo de biblioteca', () => {
+  it('sanitiza nombres de carpetas eliminando caracteres inválidos', () => {
+    assert.equal(sanitizeFolderName('God: of "War" *Ragnarök*?'), 'God of War Ragnarök');
+  });
+
+  it('determina carpeta adecuada para TitleID', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps5-lib-'));
+    const folder = resolveGameFolder(dir, 'God of War Ragnarök', 'CUSA34384');
+    assert.equal(folder.endsWith('God of War Ragnarök (CUSA34384)'), true);
+  });
+
+  it('getBestTargetLibrary entrega ruta válida de biblioteca', () => {
+    const target = getBestTargetLibrary('E:\\test.pkg');
+    assert.equal(target.includes('Biblioteca_Juegos_PS'), true);
+  });
+});
+

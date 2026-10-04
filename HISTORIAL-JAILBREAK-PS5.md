@@ -407,3 +407,40 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - **Centinela IDM (`idm_watcher.js`):** Activo en segundo plano. Monitorea `Downloads/`, auto-descomprime RARs con contraseñas de DLPSGame, aplica auditoría forense de 7 barreras criptográficas/magic header, y organiza en carpetas `Nombre (CUSA...)`.
 - **Modo Descarga Pura:** El usuario descarga a tope de banda (426 Mbps por tethering USB). Al llenar los ~400 GB en `E:`, se conecta el cable LAN Ethernet (Intel I211) y se ejecuta `node pipeline/scripts/lan_installer.js` para instalar todo por red a 95-110 MB/s.
 
+## 23. Pipeline Autónomo Multi-Disco, Auditoría de Hardware y Catálogo Maestro (4-oct mediodía)
+
+**1. Auditoría Integral del Entorno:**
+- **Consola:** PS5 Slim FW 13.40 con almacenamiento interno limpio desde cero (667.20 GB útiles netos).
+- **PC:** AMD Ryzen 5 5600X (6C/12T), 32 GB RAM DDR4 @ 3200MHz, Dual NVMe SSD (ADATA SX6000 512GB en E: + KINGSTON SNV2S 1TB en C:), Intel I211 Gigabit NIC.
+- **Energía Windows:** Perfil "Máximo Rendimiento", suspensión desactivada al 100% (`powercfg STANDBYIDLE=0`).
+- **TeraCopy 4.0.3.2:** Auditado. Descartado para el daemon desatendido por riesgo de popups GUI/modales interactivos; se prefiere el kernel I/O Win32 (`CopyFileExW` con verificación atómica de bytes y punteros MFT de 0.1ms).
+
+**2. Blindaje Multi-Disco y Anti-Crash del Centinela (`idm_watcher.js` PID 14860):**
+- **Pre-flight Check Estricto:** Exige suma de todos los volúmenes del juego + 30 GB de colchón libre antes de iniciar cualquier extracción (`archive_extractor.js`).
+- **Throttle Térmico / CPU:** 7-Zip rígidamente fijado en 2 hilos (`-mmt=2`), modo silencioso sin saturar buffers (`-bso0 -bse0 -bsp0 -y`), timeout duro de 45m.
+- **Detector IDM Rebuilding:** `isAnyFileBusy()` frena la extracción si IDM está ensamblando chunks en disco.
+- **Balanceo Dinámico E: ➔ C:** Si `E:\` baja de 160 GB libres, desvía automáticamente las extracciones y juegos a `C:\Biblioteca_Juegos_PS`.
+- **Cruce de Discos Fail-Closed:** `copyFileSync` verifica `dstStat.size === srcStat.size` antes de borrar el original; si falta 1 byte, borra el destino y conserva el original en E:.
+- **Limpieza Inmediata:** Descompresión ➔ Validación forense de cabecera PKG (`0x7F434E54`) ➔ Borrado inmediato de archivos `.rar` para liberar espacio.
+
+**3. Catálogo Maestro Definitivo (12 Juegos | 619.79 GB / 667.20 GB PS5):**
+- **Tanda 1 (En descarga activa en IDM + MK11 en PC):**
+  1. *God of War Ragnarök* (`CUSA34384`) [Latino] — 106.72 GB (Base + Upd 6.05 + Valhalla DLC)
+  2. *MLB The Show 24* (`CUSA43942`) [60fps 4K] — 84.69 GB (Base v1.00 + Upd v1.21)
+  3. *Horizon Forbidden West* (`CUSA28561`) [Latino] — 73.74 GB (Base + Upd 1.18 + DLCs)
+  4. *Mortal Kombat 11 Ultimate* (`CUSA11518`) [Latino] — 69.37 GB (¡Ya en PC en `C:\Biblioteca_Juegos_PS`!)
+  5. *Horizon Zero Dawn Complete* (`CUSA01967`) [Latino] — 47.36 GB (Base + Upd 1.54 + Frozen Wilds)
+  6. *Ghost of Tsushima Director's Cut* (`CUSA13323`) [Latino] — 46.75 GB (Base v2.24 + Iki Island DLCs)
+  7. *God of War 2018* (`CUSA07408`) [USA Latino] — 43.53 GB (Base + Upd 1.35 + 8 DLCs)
+  8. *It Takes Two* (`CUSA16742`) [Coop Pareja] — 34.33 GB (Full Game v1.03)
+  *Subtotal Tanda 1:* 506.49 GB.
+- **Tanda 2 (Lista de Espera Nocturna):**
+  9. *Marvel's Spider-Man 1* (`CUSA02299`) [Latino] — 63.00 GB (Base + Upd 1.19 60fps + 3 DLCs)
+  10. *Crash Team Racing Nitro-Fueled* (`CUSA13795`) [Coop 4p] — 28.60 GB (Base + Upd 1.21 + DLCs)
+  11. *A Way Out* (`CUSA08004`) [Coop Pareja] — 17.10 GB (Base + Upd 1.01)
+  12. *Haven* (`CUSA23384`) [Coop con Angelina] — 4.60 GB (Base + Upd 1.06)
+  *Subtotal Tanda 2:* 113.30 GB.
+- **Total Colección:** 619.79 GB.
+- **Espacio Libre en PS5 tras instalar los 12 juegos:** **+47.41 GB LIBRES**.
+
+
