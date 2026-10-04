@@ -16,7 +16,6 @@ const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { extractArchive, cleanupArchiveVolumes, inspectMultiPart } = require('../lib/archive_extractor.js');
 const { resolveGameFolder, moveFileToGameFolder } = require('../lib/library_organizer.js');
-const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
 const WATCH_DIRS = Array.from(new Set([
@@ -93,7 +92,6 @@ function handlePkgFile(fullPath, filename) {
     if (moveRes.success) {
       processed.add(filename);
       lastSizes.delete(filename);
-      sendTelegramMessage(`📦 <b>Juego Verificado y Listo en PC:</b>\n• <code>[${result.info.titleId}] ${result.info.title}</code> (${sizeGb} GB)\n• Guardado en biblioteca.\n\n👉 <b>¡Turno de poner la siguiente descarga en IDM!</b>`);
     }
   } else {
     logPs5(TAG, `❌ RECHAZADO: ${filename} fallo validacion: ${result.errors.join('; ')}`, LOG_FILE);
@@ -227,7 +225,6 @@ function checkIdmEvents() {
             if (fnM) name = (fnM[1].trim().split('?')[0]);
           } catch {}
           logPs5(TAG, `🎉 IDM completó descarga: ${name}`, LOG_FILE);
-          sendTelegramMessage(`📥 <b>IDM: Descarga Finalizada:</b>\n• <code>${name}</code>\n• Ensamblando/verificando en PC...\n\n👉 <b>¡Pon a descargar el siguiente juego en IDM ahora!</b>`);
         }
       } catch {}
     }
@@ -273,12 +270,10 @@ function checkAutoTransition() {
   logPs5(TAG, '🎉 TODAS LAS DESCARGAS COMPLETADAS Y ORGANIZADAS EN DISCO.', LOG_FILE);
   if (process.env.PS5_AUTO_INSTALL === 'true') {
     logPs5(TAG, '🚀 Auto-iniciando Fase 2: Instalador LAN...', LOG_FILE);
-    sendTelegramMessage(`🎉 <b>Todas las Descargas Listas:</b>\n• Iniciando instalación a PS5 por LAN...`);
     const lanScript = path.join(__dirname, 'lan_installer.js');
     spawn(process.execPath, [lanScript], { detached: true, stdio: 'ignore' }).unref();
   } else {
     logPs5(TAG, '⏸️ Instalación en espera (descarga masiva primero / auditoría GLM).', LOG_FILE);
-    sendTelegramMessage(`🎉 <b>Todas las Descargas de la Tanda Listas:</b>\n• Archivos íntegros y organizados en PC.\n• ⏸️ Instalación a PS5 en pausa (auditoría en curso). Listos para instalar.`);
   }
 }
 

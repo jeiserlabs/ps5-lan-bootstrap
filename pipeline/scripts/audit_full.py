@@ -106,23 +106,7 @@ def registry():
 
 
 def telegram(msg):
-    token = chat = ""
-    env_path = os.path.join(ROOT, ".env")
-    if os.path.isfile(env_path):
-        for line in open(env_path, encoding="utf-8", errors="ignore"):
-            line = line.strip()
-            if line.startswith("TELEGRAM_BOT_TOKEN="):
-                token = line.split("=", 1)[1]
-            elif line.startswith("TELEGRAM_CHAT_ID="):
-                chat = line.split("=", 1)[1]
-    if not token or not chat:
-        return False
-    data = urllib.parse.urlencode({"chat_id": chat, "text": msg, "parse_mode": "HTML"}).encode()
-    try:
-        urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data, timeout=10)
-        return True
-    except Exception:
-        return False
+    return False
 
 
 def main():

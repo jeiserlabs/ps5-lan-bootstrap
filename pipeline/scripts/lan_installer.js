@@ -13,7 +13,6 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
-const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
@@ -101,7 +100,6 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category) {
   let lastEndByte = 0;
   let hasStarted = false;
   let lastReportedPct = -1;
-  let lastTelegramMilestone = 0;
 
   for (let i = 0; i < 1080; i++) {
     await sleep(5000);
@@ -122,11 +120,6 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category) {
               if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
                 lastReportedPct = pct;
                 logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
-              }
-              const milestone = pct >= 75 ? 75 : pct >= 50 ? 50 : pct >= 25 ? 25 : 0;
-              if (milestone > lastTelegramMilestone) {
-                lastTelegramMilestone = milestone;
-                sendTelegramMessage(`⏳ <b>${titleId} ${category}:</b> ${milestone}% (${(lastEndByte / 1e9).toFixed(1)}/${(expectedSize / 1e9).toFixed(1)} GB)`);
               }
             }
             if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
@@ -205,14 +198,12 @@ async function installPkg(pkgPath, dryRun = false) {
   }
 
   logPs5(TAG, `🚀 PS5 aceptó el paquete. Transfiriendo e instalando...`, LOG_FILE);
-  sendTelegramMessage(`🚀 <b>Instalando en PS5:</b>\n• <code>${filename}</code> (${category}, ${sizeGb} GB)\n• Transfiriendo por cable LAN...`);
 
   await sleep(5000);
 
   const completed = await waitForPkgTransfer(filename, audit.info.sizeBytes, audit.info.titleId, category);
   if (completed) {
     logPs5(TAG, `✅ INSTALACIÓN COMPLETADA Y VERIFICADA: ${filename}`, LOG_FILE);
-    sendTelegramMessage(`✅ <b>Instalado y Verificado en PS5:</b>\n• <code>${filename}</code>`);
     const installed = loadInstalledList();
     if (!installed.includes(filename)) {
       installed.push(filename);
@@ -229,7 +220,6 @@ async function installPkg(pkgPath, dryRun = false) {
     return true;
   } else {
     logPs5(TAG, `❌ Instalación de ${filename} falló o no superó la verificación.`, LOG_FILE);
-    sendTelegramMessage(`❌ <b>Fallo en instalación:</b>\n• <code>${filename}</code>`);
     return false;
   }
 }
@@ -282,7 +272,6 @@ async function main() {
   }
 
   logPs5(TAG, '=== FIN DE CICLO DE INSTALACIÓN LAN ===', LOG_FILE);
-  sendTelegramMessage('🏆 <b>Pipeline PS5 Finalizado:</b>\n• Todos los juegos seleccionados han sido instalados y verificados con éxito.');
 }
 
 if (require.main === module) {
