@@ -14,6 +14,7 @@ const { logPs5 } = require('../lib/pipeline_log.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
 const { sanitizeFilename } = require('../lib/security.js');
+const { ps5HttpGet } = require('../lib/ps5_client.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
@@ -22,17 +23,7 @@ const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'lan_installer.log')
 const TAG = 'LAN_INSTALLER';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-function httpGet(url, timeoutMs = 5000) {
-  return new Promise((resolve) => {
-    const req = http.get(url, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => resolve({ status: res.statusCode || 0, body }));
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
-    req.on('error', () => resolve(null));
-  });
-}
+const httpGet = ps5HttpGet;
 function loadInstalledList() { try { return JSON.parse(fs.readFileSync(INSTALLED_FILE, 'utf8')); } catch { return []; } }
 function saveInstalledList(list) { try { fs.writeFileSync(INSTALLED_FILE, JSON.stringify(list, null, 2) + '\n'); } catch {} }
 

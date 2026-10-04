@@ -25,6 +25,7 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { sendTelegramMessage } = require('../lib/telegram.js');
+const { ps5HttpGet } = require('../lib/ps5_client.js');
 
 const cfg = getPs5Config();
 const TAG = 'KSTUFF_WATCHDOG';
@@ -60,20 +61,7 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function httpGet(url, timeoutMs = 4000) {
-  return new Promise((resolve) => {
-    const req = http.get(url, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => resolve({ status: res.statusCode || 0, body }));
-    });
-    req.setTimeout(timeoutMs, () => {
-      req.destroy();
-      resolve(null);
-    });
-    req.on('error', () => resolve(null));
-  });
-}
+const httpGet = ps5HttpGet;
 
 function tcpOpen(host, port, timeoutMs = 3000) {
   return new Promise((resolve) => {

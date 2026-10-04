@@ -1,0 +1,25 @@
+{
+  "targetConsoleFw": "13.40",
+  "payloads": {
+    "kstuff.elf": {
+      "minFw": "7.00",
+      "maxFw": "13.60",
+      "notes": "EchoStretch kstuff-lite. En 13.40 solo FPKG <=11.60 o exfat"
+    },
+    "ftpsrv-ps5.elf": {
+      "minFw": "7.00",
+      "maxFw": "13.60",
+      "notes": "ps5-payload-dev ftpsrv anonymous port 2121"
+    },
+    "shadowmountplus.elf": {
+      "minFw": "7.00",
+      "maxFw": "13.60",
+      "notes": "drakmor ShadowMountPlus. Requiere kstuff_game_auto_toggle=0"
+    },
+    "elfldr-ps5.elf": {
+      "minFw": "7.00",
+      "maxFw": "13.60",
+      "notes": "ps5-payload-dev elfldr port 9021"
+    }
+  }
+}

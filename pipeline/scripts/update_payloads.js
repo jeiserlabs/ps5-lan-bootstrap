@@ -47,11 +47,26 @@ function getLocalFileHash(filePath) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-/**
- * Crea copia de respaldo previa antes de cualquier modificación.
- */
+function pruneOldBackups(backupRootDir, maxKeep = 5) {
+  try {
+    if (!fs.existsSync(backupRootDir)) return;
+    const dirs = fs.readdirSync(backupRootDir)
+      .map((d) => {
+        const full = path.join(backupRootDir, d);
+        return { name: d, full, time: fs.statSync(full).mtimeMs };
+      })
+      .sort((a, b) => b.time - a.time);
+    if (dirs.length > maxKeep) {
+      for (const old of dirs.slice(maxKeep)) {
+        fs.rmSync(old.full, { recursive: true, force: true });
+      }
+    }
+  } catch {}
+}
+
 function backupPayload(targetFile, backupRootDir) {
   if (!fs.existsSync(targetFile)) return null;
+  pruneOldBackups(backupRootDir, 5);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const destDir = path.join(backupRootDir, stamp);
   fs.mkdirSync(destDir, { recursive: true });

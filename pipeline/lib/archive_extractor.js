@@ -72,21 +72,16 @@ function extractArchive(archivePath, outDir, logFile) {
     if (!fs.existsSync(path.join(dir, part2Name))) {
       return { success: false, extractedFiles: [], error: 'Volúmenes incompletos (part2 ausente). Esperando descarga en IDM.' };
     }
-    // Verificar si todos los volúmenes del juego ya están presentes en disco
-    let volumesReady = false;
-    for (const pwd of PASSWORDS) {
-      const testProc = spawnSync(SEVEN_ZIP, ['t', archivePath, `-p${pwd}`, '-mmt=2', '-y', '-bso0', '-bse0', '-bsp0'], {
+    // Verificación ultra-rápida (50ms): comprobar si faltan volúmenes en el archivo
+    if (tool === '7z') {
+      const listProc = spawnSync(SEVEN_ZIP, ['l', archivePath, '-slt'], {
         encoding: 'utf8',
-        maxBuffer: 4 * 1024 * 1024,
-        timeout: 20000,
+        maxBuffer: 2 * 1024 * 1024,
+        timeout: 5000,
       });
-      if (testProc.status === 0) {
-        volumesReady = true;
-        break;
+      if (listProc.status !== 0 || (listProc.stdout && listProc.stdout.includes('Missing volume'))) {
+        return { success: false, extractedFiles: [], error: 'Volúmenes incompletos (esperando partes restantes en IDM).' };
       }
-    }
-    if (!volumesReady) {
-      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos o corruptos. Esperando partes restantes.' };
     }
   }
 

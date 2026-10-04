@@ -157,10 +157,10 @@ function handleRarArchive(fullPath, filename) {
       processed.add(filename);
       lastSizes.delete(filename);
       try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
+      lastExtractionFinishedAt = Date.now();
     }
   } finally {
     isExtracting = false;
-    lastExtractionFinishedAt = Date.now();
   }
 }
 
