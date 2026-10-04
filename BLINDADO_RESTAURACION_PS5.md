@@ -141,7 +141,7 @@ npm test                                                          # 33/33
 ## 6. Lo que este blindaje NO cubre (riesgos residuales)
 
 1. **Borrar datos del navegador** de la PS5 → página cacheada del exploit muerta. Recuperación §3.A2 paso 2 (5 min con PC).
-2. **Cable directo a PC apagada** → sin link → Relapse no explota. Usar Wi-Fi con DNS muerto o un switch barato entre PC y PS5.
+2. **Cable directo a PC apagada** → sin link → Relapse no explota. Síntoma exacto en pantalla: `[relapse] [-] kaslr: no interface has an address`. Reconectar cable (PC encendida) o Wi-Fi con DNS muerto `192.168.2.1` y pulsar **△ Volver a cargar**; el reboot no es necesario. Un switch barato entre PC y PS5 elimina este caso.
 3. **Actualizar firmware** → irreversible. El DNS bloquea las descargas de updates; no aceptar el aviso de update nunca.
 4. **Mismo PC con otra IP** → cambiar `PS5_PC_IP`/config y revisar reglas firewall + DNS de la consola.
 5. Detalle completo de fallos y runbook de síntomas: `AUDIT_Y_PREMORTEM_PS5_2026-10-03.md` §4–5.

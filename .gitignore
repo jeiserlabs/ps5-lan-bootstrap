@@ -28,6 +28,8 @@ scratch/
 *.db
 *.sqlite
 *.sqlite3
+*.vtt
+*.part
 
 # OS / IDE artifacts
 .DS_Store

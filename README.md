@@ -119,6 +119,7 @@ Binarios en `payloads/` y `ps5-host/` (gitignored por diseño). Hashes y URLs of
 | Síntoma | Fix rápido |
 |---|---|
 | La consola no tiene jailbreak tras encender | ¿Interfaz de red activa? (Relapse la exige) → abrir **WebKit Autoloader** |
+| En pantalla: `[relapse] [-] kaslr: no interface has an address` | La consola se quedó **sin interfaz con IP** (cable desconectado o PC apagada). Reconectar cable a la PC encendida (o Wi-Fi con DNS manual `192.168.2.1`) y pulsar **△ Volver a cargar**. No hace falta reiniciar |
 | El Autoloader no carga la página | Host del PC vivo (TCP 443 en 192.168.2.1) · DNS manual en la consola · **NO borrar datos del navegador** |
 | Juegos no arrancan a media sesión | `npm run ps5:watchdog:once` (repara en caliente) · revisar `kstuff_game_auto_toggle=0` en `/data/shadowmount/config.ini` |
 | Consola sin jailbreak persistente | Normal: es tethered. 1 toque por encendido |

@@ -17,6 +17,8 @@
     "ps5:send-elf": "node pipeline/scripts/send_elf.js",
     "ps5:watchdog": "node pipeline/scripts/kstuff_watchdog.js",
     "ps5:watchdog:once": "node pipeline/scripts/kstuff_watchdog.js --once",
+    "ps5:idm-watcher": "node pipeline/scripts/idm_watcher.js",
+    "ps5:install-lan": "node pipeline/scripts/lan_installer.js",
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
     "test": "node --test pipeline/tests/pkg_validator.test.js pipeline/tests/ps5_pipeline.test.js"

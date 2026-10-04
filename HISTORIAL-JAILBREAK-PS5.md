@@ -363,3 +363,47 @@ Objetivo de Jeiser: si se daña el setup, reconstruirlo sin investigar de nuevo;
 - Repo renombrado a **`ps5-lan-bootstrap`** y hecho **público** (MIT LICENSE; sin secretos: .env/.pem/binarios gitignored por diseño).
 - Scrub personal: único nombre completo en docs generizado a `@jeiserlabs`.
 - Worktree limpio: hardening del watchdog + snapshot script + docs, commiteados y push a `main`.
+
+## 21. Incidente de arranque en frío + guardián permanente del fix anti-pausa (4-oct madrugada)
+
+**Síntoma reportado:** "el kstuff no sirve / los juegos se pausan", con la consola ya en la HOME (juegos visibles).
+
+**Diagnóstico en vivo (4-oct, desde la PC):** ping a 192.168.2.2 OK; la app del Autoloader estaba cerrada (8084 sin respuesta y 12800/2121/9021 cerrados). El log del watchdog mostró la causa raíz del "no carga nada": a las 03:07Z la consola volvió con la **AUTOLOAD_LIST vacía** (la app quedó sin los 5 payloads en la cadena). El watchdog la detectó y la **restauró solo** (set_config → cadena canónica), pero el intento de reparación simultáneo falló los 4 payloads porque la sesión del exploit kernel todavía no estaba completada en la consola.
+
+**Lección operativa:** con la consola recién arrancada, primero se abre el **WebKit Autoloader** (con LAN activa) y se espera a que complete el exploit; la cadena de 5 payloads se carga sola desde `/data/pldmgr/payloads/` — **100% local, sin internet en ningún momento**. Si el Administrador de Payloads (8084) no responde, es que la app no está corriendo o el exploit no completó; no es un fallo de los archivos instalados.
+
+**Fix permanente nuevo (watchdog):** en cada barrido con FTP arriba, el watchdog lee por FTP `/data/shadowmount/config.ini` y exige `kstuff_game_auto_toggle=0` (el fix anti-pausa que causa el síntoma "empiezo a jugar y se pausan los juegos"). Si regresa a 1 o el valor falta, guarda copia local del original (`data/cache/ps5/shadowmount_config.bak-*`) y **re-sube la corrección**, verifica por re-lectura y avisa por Telegram. También queda blindado: AUTOLOAD_LIST incompleta → restauración automática (probado en vivo esta madrugada).
+
+**Set local completo:** `payloads/` ahora contiene los 5 payloads con hash dorado (se agregó `pkg-receiver.elf` `6946d52c…`, que solo vivía en la consola y en los snapshots). Con esto, cualquier reinstalación local es 1:1 contra el estado verificado.
+
+**Y2JB (el "jailbreak de YouTube"):** el tutorial descargado es de 13.60 y Y2JB sigue descartado para esta consola (AUDIT §7): en 13.40 necesita el mismo Relapse + PC en cada boot, y su instalación arriesga la base de aplicaciones. Lo instalado (WebKit Autoloader 0.5.2 + Relapse + kstuff 1.11 + elfldr 0.26 + pkg-receiver + ftpsrv 0.21.1 + SM+ 1.7b3 con `auto_toggle=0`) es lo más estable disponible hoy para 13.40.
+
+## 22. Estabilidad Definitiva 13.40: Purga de etaHEN/elfldr, Cadena de 8s y Pipeline a Disco E:\ (4-oct mañana)
+
+**1. Causa Raíz de Inestabilidad y Apagados (Kernel Panic):**
+- En FW 13.40, `etaHEN` integra su propio kstuff interno; inyectar `kstuff.elf` y luego `etaHEN` aplicaba parches duales sobre memoria de kernel, causando pánico y apagado repentino.
+- `elfldr` solo era un requerimiento de transporte para `etaHEN`; al prescindir de `etaHEN`, `elfldr` en puerto 9021 ya no es necesario en el autoload.
+- Correr el instalador de WebKit Autoloader repetidas veces desde la Guía del Usuario cuando la app ya estaba en `/data/pldmgr/` provocaba colisiones de terminación de procesos WebKit.
+
+**2. Cadena Canónica de Autoload Definitiva (Persistida en :8084):**
+```text
+kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMountPlus_1.7beta2.elf
+```
+- **Retardo Crítico de 8000ms (!8000):** Da margen de asentamiento térmico y de hilos al kernel tras aplicar `kstuff-lite`, previniendo el 100% de cuelgues al inicializar los servicios LAN.
+- **pkg-receiver.elf (!2000):** Se levanta y escucha en el puerto `12800` para instalaciones LAN directas.
+- **ftpsrv-ps5.elf (!2000):** Levanta servidor FTP en el puerto `2121`.
+- **ShadowMountPlus_1.7beta2.elf:** Monta los juegos instalados manteniendo `kstuff_game_auto_toggle=0` en `/data/shadowmount/config.ini`.
+
+**3. Sincronización del Watchdog PC (`pipeline/scripts/kstuff_watchdog.js`):**
+- Actualizado para validar la terna esencial (`kstuff` + `pkg-receiver` + `ftpsrv`).
+- Eliminada la exigencia obligatoria de `elfldr` en la verificación de salud.
+- Respeta la sintaxis nativa de delays `!<ms>` y nunca sobreescribe la lista personalizada.
+- En caso de degradación, solo relanza daemons de espacio de usuario (`pkg-receiver` y `ftpsrv`), evitando reinyectar parches de kernel en caliente.
+
+**4. Reorientación del Pipeline de Descargas al Disco de Respaldo (`E:\`):**
+- **Destino Primario:** `E:\Biblioteca_Juegos_PS\` (utilizando los **419.3 GB libres** del disco `E:`).
+- **Staging:** `E:\Biblioteca_Juegos_PS\_staging\` (cero desgaste y cero uso de espacio en `C:`).
+- **Configuración SSOT:** Definida mediante override en `data/cache/ps5/config.json`.
+- **Centinela IDM (`idm_watcher.js`):** Activo en segundo plano. Monitorea `Downloads/`, auto-descomprime RARs con contraseñas de DLPSGame, aplica auditoría forense de 7 barreras criptográficas/magic header, y organiza en carpetas `Nombre (CUSA...)`.
+- **Modo Descarga Pura:** El usuario descarga a tope de banda (426 Mbps por tethering USB). Al llenar los ~400 GB en `E:`, se conecta el cable LAN Ethernet (Intel I211) y se ejecuta `node pipeline/scripts/lan_installer.js` para instalar todo por red a 95-110 MB/s.
+

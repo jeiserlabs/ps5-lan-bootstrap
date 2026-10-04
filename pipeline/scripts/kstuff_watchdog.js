@@ -9,7 +9,9 @@
  * Uso: node scripts/kstuff_watchdog.js [--once | --status]
  * Notas 3-oct: rutas reales de payloads (list_payloads), resultado por payload, salud de
  *   elfldr (9021), presupuesto por sesión de jailbreak, inmune a excepciones no capturadas.
- * SRP < 300L. Cero dependencias externas.
+ * Notas 4-oct: guardián del fix anti-pausa — verifica por FTP que SM+ tenga
+ *   kstuff_game_auto_toggle=0 en /data/shadowmount/config.ini y lo restaura si regresa.
+ * SRP < 300L. Cero dependencias externas (curl del sistema para FTP).
  */
 'use strict';
 
@@ -17,6 +19,8 @@ const http = require('node:http');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
@@ -32,6 +36,9 @@ const POLL_MS = Number(process.env.PS5_WATCHDOG_POLL_MS || 60000);
 const REPAIR_COOLDOWN_MS = 10 * 60 * 1000; // 1 intento de reparación cada 10 min
 const MAX_REPAIRS_PER_SESSION = 8; // por sesión de jailbreak (se resetea si la consola reinicia)
 const LIMIT_LOG_EVERY_MS = 60 * 60 * 1000; // sin presupuesto: avisar en el log solo 1 vez por hora
+const SM_CONFIG_CHECK_MS = 10 * 60 * 1000; // re-verificar el fix anti-pausa de SM+ cada 10 min
+
+const execFileP = promisify(execFile);
 
 /** Cadena canónica; el Payload Manager a veces devuelve config vacía un instante (glitch observado 3-oct). */
 const CANONICAL_AUTOLOAD = 'kstuff.elf,elfldr-ps5.elf,pkg-receiver.elf,ftpsrv-ps5.elf,shadowmountplus.elf';
@@ -156,8 +163,8 @@ async function ensureAutoloadConfig(log) {
   } catch {
     return false;
   }
-  const missing = CANONICAL_AUTOLOAD.split(',').filter((p) => !list.split(',').includes(p));
-  if (missing.length === 0) return true;
+  const hasCore = /kstuff/i.test(list) && /pkg-receiver/i.test(list) && /ftpsrv/i.test(list);
+  if (hasCore) return true;
 
   // Reintento de lectura antes de escribir: evita pisar config buena por una respuesta cortada.
   await sleep(3000);
@@ -166,10 +173,9 @@ async function ensureAutoloadConfig(log) {
   try {
     retryList = String(JSON.parse((retry && retry.body) || '{}').AUTOLOAD_LIST || '');
   } catch {}
-  const stillMissing = CANONICAL_AUTOLOAD.split(',').filter((p) => !retryList.split(',').includes(p));
-  if (stillMissing.length === 0) return true;
+  if (/kstuff/i.test(retryList) && /pkg-receiver/i.test(retryList) && /ftpsrv/i.test(retryList)) return true;
 
-  log(`⚠️ AUTOLOAD_LIST incompleta en la consola (faltan: ${stillMissing.join(', ')}). Restaurando...`);
+  log('⚠️ AUTOLOAD_LIST incompleta o vacía en la consola. Restaurando canónica...');
   const set = await httpPostJson(`${PMGR}/set_config`, { AUTOLOAD_LIST: CANONICAL_AUTOLOAD });
   const ok = Boolean(set && /ok/i.test(set.body || ''));
   if (ok) {
@@ -179,6 +185,83 @@ async function ensureAutoloadConfig(log) {
     log('❌ No se pudo restaurar AUTOLOAD_LIST (set_config falló).');
   }
   return ok;
+}
+
+/**
+ * Blindaje del fix anti-pausa de kstuff: SM+ debe arrancar con
+ * `kstuff_game_auto_toggle=0` en /data/shadowmount/config.ini. Con 1, SM+ pausa kstuff
+ * al lanzar un juego y solo lo reanuda al salir; si el juego crashea, kstuff queda
+ * pausado hasta el reboot (síntoma: "empiezo a jugar y se pausan los juegos").
+ * Verifica por FTP cada SM_CONFIG_CHECK_MS; si regresó, guarda copia local del original
+ * y re-sube la versión corregida (mismo mecanismo del RESTORE_NOTES del backup).
+ * @param {(m: string) => void} log
+ * @param {Record<string, any>} state
+ * @returns {Promise<string>} 'ok' | 'ok (reciente)' | 'corregido' | 'ilegible' | 'no se pudo corregir'
+ */
+async function ensureSmConfig(log, state) {
+  if (Date.now() - (state.lastSmConfigCheckMs || 0) < SM_CONFIG_CHECK_MS) return 'ok (reciente)';
+  const url = `ftp://${cfg.ps5.ip}:2121/data/shadowmount/config.ini`;
+  const tmp = path.join(cfg.state.cacheDir, 'shadowmount_config.check.ini');
+  if (!(await ftpDownload(url, tmp))) return 'ilegible'; // sin sello: se reintenta el próximo barrido
+  state.lastSmConfigCheckMs = Date.now();
+
+  let content = '';
+  try {
+    content = fs.readFileSync(tmp, 'utf8');
+  } catch {
+    return 'ilegible';
+  }
+  const current = content.match(/^\s*kstuff_game_auto_toggle\s*=\s*(\S+)/m);
+  if (current && current[1] === '0') return 'ok';
+
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+  const backup = path.join(cfg.state.cacheDir, `shadowmount_config.bak-${stamp}`);
+  try {
+    fs.writeFileSync(backup, content);
+  } catch {}
+  const fixed = current
+    ? content.replace(/^(\s*kstuff_game_auto_toggle\s*=\s*).*$/m, (_s, pre) => `${pre}0`)
+    : `${content.trimEnd()}\nkstuff_game_auto_toggle=0\n`;
+  try {
+    fs.writeFileSync(tmp, fixed);
+  } catch {
+    return 'ilegible';
+  }
+  if (!(await ftpUpload(tmp, url))) return 'no se pudo corregir';
+
+  // Verificación: re-descargar y confirmar el 0.
+  const check = path.join(cfg.state.cacheDir, 'shadowmount_config.recheck.ini');
+  const reread = (await ftpDownload(url, check)) && /kstuff_game_auto_toggle\s*=\s*0/.test(fs.readFileSync(check, 'utf8'));
+  log(
+    `⚠️ SM+ tenía kstuff_game_auto_toggle=${current ? current[1] : 'ausente'}; ${reread ? 'corregido a 0' : 'NO se pudo confirmar la corrección'} (copia local del original: ${path.basename(backup)}).`
+  );
+  if (reread) {
+    sendTelegramMessage(
+      '🔧 <b>Watchdog PS5:</b> el fix anti-pausa de kstuff había regresado en SM+ (<code>kstuff_game_auto_toggle</code>≠0); lo restauré a 0.'
+    );
+    return 'corregido';
+  }
+  return 'no se pudo corregir';
+}
+
+/** Descarga por FTP (curl del sistema, igual que console_state_backup.js). */
+async function ftpDownload(url, outFile) {
+  try {
+    await execFileP('curl', ['-s', '-m', '10', '--ftp-pasv', url, '-o', outFile], { windowsHide: true });
+    return fs.existsSync(outFile) && fs.statSync(outFile).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Sube un archivo por FTP (STOR) — restauración de config por LAN. */
+async function ftpUpload(file, url) {
+  try {
+    await execFileP('curl', ['-s', '-m', '10', '--ftp-pasv', '-T', file, url], { windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function repairCycle(state, log) {
@@ -205,7 +288,7 @@ async function repairCycle(state, log) {
   );
 
   const results = {};
-  for (const name of ['kstuff.elf', 'pkg-receiver.elf', 'ftpsrv-ps5.elf', 'elfldr-ps5.elf']) {
+  for (const name of ['pkg-receiver.elf', 'ftpsrv-ps5.elf']) {
     results[name] = await loadPayload(name);
     await sleep(4000);
   }
@@ -230,9 +313,13 @@ async function repairCycle(state, log) {
 }
 
 async function sweep(state, log) {
+  /** @type {{ps5Online: boolean, receiverOk: boolean, ftpOk: boolean, elfOk: boolean, smConfig: string}} */
+  const health = { ps5Online: false, receiverOk: false, ftpOk: false, elfOk: false, smConfig: 'skip' };
+
   // 1) ¿Payload Manager vivo? (la sesión de la consola sigue activa)
   const pmgr = await httpGet(`${PMGR}/version`, 4000);
   const ps5Online = Boolean(pmgr && pmgr.status === 200);
+  health.ps5Online = ps5Online;
 
   if (!ps5Online) {
     if (state.ps5WasOnline) {
@@ -243,7 +330,7 @@ async function sweep(state, log) {
           'Cuando enciendas: abrir <b>WebKit Autoloader</b> — la cadena carga sola.'
       );
     }
-    return;
+    return health;
   }
   if (!state.ps5WasOnline) {
     state.ps5WasOnline = true;
@@ -261,12 +348,20 @@ async function sweep(state, log) {
   const receiverOk = await pkgReceiverAlive();
   const ftpOk = await tcpOpen(cfg.ps5.ip, 2121, 5000);
   const elfOk = await tcpOpen(cfg.ps5.ip, cfg.ps5.elfldrPort, 3000);
-  if (receiverOk && ftpOk && elfOk) return; // todo bien, silencio
+  health.receiverOk = receiverOk;
+  health.ftpOk = ftpOk;
+  health.elfOk = elfOk;
+
+  // 4) Blindaje del fix anti-pausa: SM+ con kstuff_game_auto_toggle=0 (requiere FTP)
+  if (ftpOk) health.smConfig = await ensureSmConfig(log, state);
+
+  if (receiverOk && ftpOk) return health; // todo bien, silencio (elfldr es opcional)
 
   log(
-    `Salud degradada: pkg-receiver=${receiverOk ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'} elfldr=${elfOk ? 'ok' : 'CAÍDO'}`
+    `Salud degradada: pkg-receiver=${receiverOk ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'}`
   );
   await repairCycle(state, log);
+  return health;
 }
 
 async function main() {
@@ -294,7 +389,10 @@ async function main() {
 
   try {
     if (once) {
-      await sweep(state, log);
+      const health = await sweep(state, log);
+      log(
+        `Barrido único: 8084=${health.ps5Online ? 'ok' : 'sin sesión'} 12800=${health.receiverOk ? 'ok' : 'CAÍDO'} 2121=${health.ftpOk ? 'ok' : 'CAÍDO'} 9021=${health.elfOk ? 'ok' : 'CAÍDO'} sm_config=${health.smConfig}`
+      );
     } else {
       for (;;) {
         try {
