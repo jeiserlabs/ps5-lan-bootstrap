@@ -57,7 +57,9 @@ function createAriaMockServer() {
 
 test('Aria Engine — Cliente JSON-RPC con Mock Server', async (t) => {
   const { server, state } = createAriaMockServer();
-  await new Promise((resolve) => server.listen(downloadEngine.RPC_PORT, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const testPort = server.address().port;
+  downloadEngine.setRpcPort(testPort);
 
   await t.test('1. isRpcAlive() verifica que aria2 responda versión', async () => {
     const alive = await downloadEngine.isRpcAlive();
@@ -85,5 +87,6 @@ test('Aria Engine — Cliente JSON-RPC con Mock Server', async (t) => {
     assert.match(res.error, /HTTP 500/);
   });
 
+  downloadEngine.setRpcPort(downloadEngine.RPC_PORT);
   await new Promise((resolve) => server.close(resolve));
 });

@@ -11,18 +11,28 @@ const { getPs5Config } = require('./config.js');
 
 const RPC_SECRET = 'ps5_lan_secret_2026';
 const RPC_HOST = '127.0.0.1';
-const RPC_PORT = 6800;
+const DEFAULT_RPC_PORT = 6800;
+let activePort = DEFAULT_RPC_PORT;
+
+function setRpcPort(port) {
+  activePort = port || DEFAULT_RPC_PORT;
+}
+
+function getRpcPort() {
+  return activePort;
+}
 
 /**
  * Ejecuta una llamada JSON-RPC contra aria2c con timeout estricto.
  * @param {string} method Método RPC (ej: 'aria2.addUri')
  * @param {any[]} [params=[]] Parámetros del método
  * @param {number} [timeoutMs=5000]
+ * @param {number} [portOverride]
  * @returns {Promise<{ ok: boolean, result?: any, error?: string }>}
  */
-function rpcCall(method, params = [], timeoutMs = 5000) {
+function rpcCall(method, params = [], timeoutMs = 5000, portOverride = null) {
   return new Promise((resolve) => {
-    // Inyectar secret como primer parámetro según spec de aria2
+    const port = portOverride || activePort;
     const tokenParam = `token:${RPC_SECRET}`;
     const fullParams = [tokenParam, ...params];
     const payload = JSON.stringify({
@@ -35,7 +45,7 @@ function rpcCall(method, params = [], timeoutMs = 5000) {
     const req = http.request(
       {
         hostname: RPC_HOST,
-        port: RPC_PORT,
+        port,
         path: '/jsonrpc',
         method: 'POST',
         headers: {
@@ -174,6 +184,8 @@ module.exports = {
   remove,
   changeUri,
   purgeDownloadResult,
+  setRpcPort,
+  getRpcPort,
   RPC_SECRET,
-  RPC_PORT,
+  RPC_PORT: DEFAULT_RPC_PORT,
 };

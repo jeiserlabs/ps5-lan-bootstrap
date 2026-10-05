@@ -2,7 +2,7 @@
 /**
  * @file aria_pilot.js
  * @description Daemon piloto 100% autónomo para descargas vía aria2c (JSON-RPC :6800).
- *   Administra cola 1x1, descompresión 7z automática, validación \x7fCNT y biblioteca.
+ *   Administra cola 1x1, resolución de enlaces, crash-recovery, descompresión 7z y validación \x7fCNT.
  * Uso:
  *   node pipeline/scripts/aria_pilot.js         # Modo daemon continuo (cada 5s)
  *   node pipeline/scripts/aria_pilot.js --once  # Un solo ciclo y sale
@@ -19,6 +19,7 @@ const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const { extractArchive, cleanupArchiveVolumes } = require('../lib/archive_extractor.js');
 const { resolveGameFolder, moveFileToGameFolder, getBestTargetLibrary } = require('../lib/library_organizer.js');
+const { resolveDownloadUrl } = require('../lib/akira_resolver.js');
 const downloadEngine = require('../lib/download_engine.js');
 
 const cfg = getPs5Config();
@@ -28,28 +29,23 @@ const PID_FILE = path.join(cfg.state.cacheDir, 'aria_pilot.pid');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'aria_pilot.log');
 const QUEUE_FILE = cfg.state.queueFile || path.join(cfg.state.cacheDir, 'queue_state.json');
 const STAGING_DIR = 'E:\\';
+const MAX_ATTEMPTS = 3;
 const TAG = 'ARIA_PILOT';
 
 let activeGid = null;
 let lastProgressLog = 0;
 
 /**
- * Asegura que el proceso aria2c.exe esté ejecutándose con RPC habilitado.
+ * Asegura que aria2c.exe esté ejecutándose con RPC habilitado.
  */
 async function ensureAriaRunning() {
-  const alive = await downloadEngine.isRpcAlive();
-  if (alive) return true;
-
+  if (await downloadEngine.isRpcAlive()) return true;
   if (!fs.existsSync(ARIA_EXE)) {
     logPs5(TAG, `❌ Binario no encontrado: ${ARIA_EXE}`, LOG_FILE);
     return false;
   }
-
   logPs5(TAG, '⚡ Iniciando servicio headless aria2c.exe (:6800)...', LOG_FILE);
-  const child = spawn(ARIA_EXE, [`--conf-path=${ARIA_CONF}`], {
-    detached: true,
-    stdio: 'ignore',
-  });
+  const child = spawn(ARIA_EXE, [`--conf-path=${ARIA_CONF}`], { detached: true, stdio: 'ignore' });
   child.unref();
 
   for (let i = 0; i < 15; i++) {
@@ -62,21 +58,11 @@ async function ensureAriaRunning() {
   return false;
 }
 
-/**
- * Carga el estado de la cola SSOT.
- */
 function loadQueue() {
   if (!fs.existsSync(QUEUE_FILE)) return { version: 1, items: [] };
-  try {
-    return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
-  } catch {
-    return { version: 1, items: [] };
-  }
+  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')); } catch { return { version: 1, items: [] }; }
 }
 
-/**
- * Guarda el estado de la cola atómicamente.
- */
 function saveQueue(state) {
   state.updatedAt = new Date().toISOString();
   const tmp = `${QUEUE_FILE}.tmp.${Date.now()}`;
@@ -86,11 +72,13 @@ function saveQueue(state) {
 }
 
 /**
- * Procesa un archivo descargado (extracción si es RAR/ZIP, o validación PKG).
+ * Procesa un archivo descargado (descompresión y validación \x7fCNT).
+ * Retorna true solo si el archivo es válido y fue organizado con éxito.
  * @param {string} filePath
+ * @returns {boolean}
  */
 function processCompletedFile(filePath) {
-  if (!fs.existsSync(filePath)) return;
+  if (!fs.existsSync(filePath)) return false;
   const ext = path.extname(filePath).toLowerCase();
 
   if (ext === '.rar' || ext === '.zip') {
@@ -99,15 +87,16 @@ function processCompletedFile(filePath) {
     if (extractRes.success) {
       logPs5(TAG, `✅ Extracción completada. Limpiando volúmenes comprimidos...`, LOG_FILE);
       cleanupArchiveVolumes(filePath, LOG_FILE);
+      let allOk = true;
       for (const extracted of extractRes.extractedFiles) {
         if (extracted.toLowerCase().endsWith('.pkg')) {
-          processCompletedFile(extracted);
+          if (!processCompletedFile(extracted)) allOk = false;
         }
       }
-    } else {
-      logPs5(TAG, `⚠️ Extracción pendiente o fallida: ${extractRes.error}`, LOG_FILE);
+      return allOk;
     }
-    return;
+    logPs5(TAG, `⚠️ Extracción pendiente o fallida: ${extractRes.error}`, LOG_FILE);
+    return false;
   }
 
   if (ext === '.pkg') {
@@ -115,24 +104,36 @@ function processCompletedFile(filePath) {
     const val = validatePkg(filePath);
     if (!val.valid) {
       logPs5(TAG, `❌ PKG INVÁLIDO (${val.reason}): ${filePath}`, LOG_FILE);
-      return;
+      return false;
     }
     const targetDir = getBestTargetLibrary(filePath, LOG_FILE);
     const finalPath = moveFileToGameFolder(filePath, targetDir, LOG_FILE);
     logPs5(TAG, `🎉 JUEGO ORGANIZADO Y LISTO: ${path.basename(finalPath || filePath)} ➔ ${targetDir}`, LOG_FILE);
+    return true;
   }
+  return false;
 }
 
 /**
  * Ciclo central del piloto autónomo.
  */
 async function cycle() {
-  const rpcOk = await ensureAriaRunning();
-  if (!rpcOk) return;
+  if (!(await ensureAriaRunning())) return;
 
   const queue = loadQueue();
+
+  // 1. Crash Recovery: recuperar descarga activa si el daemon fue reiniciado
+  if (!activeGid) {
+    const orphanItem = queue.items.find((i) => i.status === 'downloading' && i.gid);
+    if (orphanItem) {
+      activeGid = orphanItem.gid;
+      logPs5(TAG, `🔄 Recuperando descarga tras reinicio: ${orphanItem.name} (GID: ${activeGid})`, LOG_FILE);
+    }
+  }
+
   const activeDownloads = await downloadEngine.tellActive();
 
+  // 2. Monitoreo de descarga en curso
   if (activeDownloads.length > 0) {
     const current = activeDownloads[0];
     activeGid = current.gid;
@@ -150,34 +151,39 @@ async function cycle() {
     return;
   }
 
-  // Si había una descarga activa previa y ya no está en active, verificar su status final
+  // 3. Si terminó o falló la descarga activa previa
   if (activeGid) {
     const statusRes = await downloadEngine.tellStatus(activeGid);
     if (statusRes.ok && statusRes.status) {
       const s = statusRes.status;
+      const item = queue.items.find((i) => i.status === 'downloading' || i.gid === activeGid);
+
       if (s.status === 'complete') {
         const filePath = s.files?.[0]?.path;
         logPs5(TAG, `🎉 aria2 completó descarga GID ${activeGid}: ${filePath}`, LOG_FILE);
-        
-        // Actualizar cola
-        const item = queue.items.find((i) => i.status === 'downloading' || i.gid === activeGid);
+        await downloadEngine.purgeDownloadResult();
+
         if (item) {
-          item.status = 'completed';
-          item.completedAt = new Date().toISOString();
+          item.status = 'processing';
+          saveQueue(queue);
+          const ok = filePath ? processCompletedFile(filePath) : false;
+          if (ok) {
+            item.status = 'completed';
+            item.completedAt = new Date().toISOString();
+            logPs5(TAG, `✅ Ítem completado e instalado en biblioteca: ${item.name}`, LOG_FILE);
+          } else {
+            item.status = 'failed';
+            item.error = 'Error en validación o extracción de archivo';
+          }
           saveQueue(queue);
         }
-        await downloadEngine.purgeDownloadResult();
-        if (filePath) processCompletedFile(filePath);
       } else if (s.status === 'error') {
         logPs5(TAG, `🚨 Error en descarga GID ${activeGid} (${s.errorCode}): ${s.errorMessage}`, LOG_FILE);
-        const item = queue.items.find((i) => i.status === 'downloading' || i.gid === activeGid);
         if (item) {
           item.attempts = (item.attempts || 0) + 1;
-          if (item.attempts >= (cfg.queue.maxAttempts || 4)) {
-            item.status = 'failed';
-          } else {
-            item.status = 'pending';
-          }
+          item.status = item.attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
+          item.error = s.errorMessage;
+          delete item.gid;
           saveQueue(queue);
         }
       }
@@ -186,15 +192,26 @@ async function cycle() {
     return;
   }
 
-  // Buscar siguiente ítem pendiente en la cola
+  // 4. Buscar siguiente ítem pendiente
   const nextItem = queue.items.find((i) => i.status === 'pending');
   if (!nextItem) return;
 
-  logPs5(TAG, `🚀 Encolando nuevo ítem: ${nextItem.name} ➔ ${nextItem.url}`, LOG_FILE);
-  const options = {
-    dir: STAGING_DIR,
-  };
-  const addRes = await downloadEngine.addUri([nextItem.url], options);
+  // Resolver URL directa si es página web
+  logPs5(TAG, `🔍 Verificando URL para: ${nextItem.name}...`, LOG_FILE);
+  const resolved = await resolveDownloadUrl(nextItem.url, LOG_FILE);
+  if (!resolved.ok || !resolved.directUrl) {
+    nextItem.attempts = (nextItem.attempts || 0) + 1;
+    if (nextItem.attempts >= MAX_ATTEMPTS) {
+      nextItem.status = 'failed';
+      nextItem.error = resolved.error || 'Fallo resolviendo enlace de descarga';
+      logPs5(TAG, `❌ Ítem fallido tras superar ${MAX_ATTEMPTS} intentos: ${nextItem.name}`, LOG_FILE);
+    }
+    saveQueue(queue);
+    return;
+  }
+
+  logPs5(TAG, `🚀 Encolando descarga en aria2: ${nextItem.name}`, LOG_FILE);
+  const addRes = await downloadEngine.addUri([resolved.directUrl], { dir: STAGING_DIR });
   if (addRes.ok && addRes.gid) {
     nextItem.status = 'downloading';
     nextItem.gid = addRes.gid;
@@ -202,8 +219,8 @@ async function cycle() {
     saveQueue(queue);
     logPs5(TAG, `✅ Descarga iniciada con GID: ${addRes.gid}`, LOG_FILE);
   } else {
-    logPs5(TAG, `❌ Fallo al iniciar descarga en aria2: ${addRes.error}`, LOG_FILE);
     nextItem.attempts = (nextItem.attempts || 0) + 1;
+    if (nextItem.attempts >= MAX_ATTEMPTS) nextItem.status = 'failed';
     saveQueue(queue);
   }
 }
@@ -241,4 +258,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { cycle, ensureAriaRunning };
+module.exports = { cycle, ensureAriaRunning, processCompletedFile };
