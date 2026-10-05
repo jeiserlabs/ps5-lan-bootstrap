@@ -63,25 +63,30 @@ function extractArchive(archivePath, outDir, logFile) {
   }
 
   const multi = inspectMultiPart(path.basename(archivePath));
+  let targetArchive = archivePath;
   if (multi.isMultiPart) {
-    if (multi.partNum !== 1) {
-      return { success: false, extractedFiles: [], error: 'Ignorando: no es el volumen part1.' };
-    }
-    // Verificación rápida: si part2 ni siquiera existe en disco, abortar sin llamar a 7z
     const dir = path.dirname(archivePath);
-    const part2Name = path.basename(archivePath).replace(/\.part0*1\.rar$/i, '.part2.rar');
-    if (!fs.existsSync(path.join(dir, part2Name))) {
-      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos (part2 ausente). Esperando descarga en IDM.' };
+    const p1 = path.join(dir, `${multi.basePattern}.part1.rar`);
+    const p01 = path.join(dir, `${multi.basePattern}.part01.rar`);
+    const part1Path = fs.existsSync(p1) ? p1 : (fs.existsSync(p01) ? p01 : null);
+    if (!part1Path) {
+      return { success: false, extractedFiles: [], error: 'Ignorando: no es el volumen part1 (part1 ausente).' };
     }
-    // Verificación ultra-rápida (50ms): comprobar si faltan volúmenes en el archivo
+    targetArchive = part1Path;
+
+    const part2Name = path.basename(targetArchive).replace(/\.part0*1\.rar$/i, '.part2.rar');
+    if (!fs.existsSync(path.join(dir, part2Name))) {
+      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos: part2 ausente.' };
+    }
+
     if (tool === '7z') {
-      const listProc = spawnSync(SEVEN_ZIP, ['l', archivePath, '-slt'], {
+      const listProc = spawnSync(SEVEN_ZIP, ['l', targetArchive, '-slt'], {
         encoding: 'utf8',
         maxBuffer: 2 * 1024 * 1024,
         timeout: 5000,
       });
       if (listProc.status !== 0 || (listProc.stdout && listProc.stdout.includes('Missing volume'))) {
-        return { success: false, extractedFiles: [], error: 'Volúmenes incompletos (esperando partes restantes en IDM).' };
+        return { success: false, extractedFiles: [], error: 'Volúmenes incompletos: faltan partes restantes.' };
       }
     }
   }
@@ -111,7 +116,9 @@ function extractArchive(archivePath, outDir, logFile) {
     }
   } catch {}
 
-  fs.mkdirSync(outDir, { recursive: true });
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
 
   const beforeFiles = new Set(fs.readdirSync(outDir));
   let extractedOk = false;
@@ -121,14 +128,14 @@ function extractArchive(archivePath, outDir, logFile) {
     let proc;
     if (tool === '7z') {
       // 7z x "<archive>" -o"<outDir>" -p"<pwd>" -mmt=2 -y -bso0 -bse0 -bsp0 (<= 2 hilos, timeout 45m)
-      proc = spawnSync(SEVEN_ZIP, ['x', archivePath, `-o${outDir}`, `-p${pwd}`, '-mmt=2', '-y', '-bso0', '-bse0', '-bsp0'], {
+      proc = spawnSync(SEVEN_ZIP, ['x', targetArchive, `-o${outDir}`, `-p${pwd}`, '-mmt=2', '-y', '-bso0', '-bse0', '-bsp0'], {
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,
         timeout: 45 * 60 * 1000,
       });
     } else {
       // unrar x -p<pwd> -y "<archive>" "<outDir>\"
-      proc = spawnSync(UNRAR_EXE, ['x', `-p${pwd}`, '-y', archivePath, `${outDir}\\`], {
+      proc = spawnSync(UNRAR_EXE, ['x', `-p${pwd}`, '-y', targetArchive, `${outDir}\\`], {
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,
         timeout: 45 * 60 * 1000,

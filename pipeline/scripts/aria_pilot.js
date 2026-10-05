@@ -17,7 +17,7 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
-const { extractArchive, cleanupArchiveVolumes } = require('../lib/archive_extractor.js');
+const { extractArchive, cleanupArchiveVolumes, inspectMultiPart } = require('../lib/archive_extractor.js');
 const { resolveGameFolder, moveFileToGameFolder, getBestTargetLibrary } = require('../lib/library_organizer.js');
 const { resolveDownloadUrl } = require('../lib/akira_resolver.js');
 const downloadEngine = require('../lib/download_engine.js');
@@ -28,7 +28,7 @@ const ARIA_CONF = path.join(__dirname, '..', '..', 'tools', 'aria2c', 'aria2.con
 const PID_FILE = path.join(cfg.state.cacheDir, 'aria_pilot.pid');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'aria_pilot.log');
 const QUEUE_FILE = cfg.state.queueFile || path.join(cfg.state.cacheDir, 'queue_state.json');
-const STAGING_DIR = 'E:\\';
+const STAGING_DIR = 'E:\\staging';
 const MAX_ATTEMPTS = 3;
 const TAG = 'ARIA_PILOT';
 
@@ -71,14 +71,28 @@ function saveQueue(state) {
   fs.renameSync(tmp, QUEUE_FILE);
 }
 
+function getFilenameFromUrl(url) {
+  try {
+    const parts = url.split('/');
+    const fileIdx = parts.lastIndexOf('file');
+    if (fileIdx > 0 && parts[fileIdx - 1]) {
+      const cand = decodeURIComponent(parts[fileIdx - 1]);
+      if (cand.includes('.')) return cand;
+    }
+    const last = parts.filter(Boolean).pop();
+    if (last && last.includes('.')) return decodeURIComponent(last);
+  } catch {}
+  return null;
+}
+
 /**
  * Procesa un archivo descargado (descompresión y validación \x7fCNT).
- * Retorna true solo si el archivo es válido y fue organizado con éxito.
+ * Retorna 'completed' | 'deferred' | 'failed'
  * @param {string} filePath
- * @returns {boolean}
+ * @returns {string}
  */
 function processCompletedFile(filePath) {
-  if (!fs.existsSync(filePath)) return false;
+  if (!fs.existsSync(filePath)) return 'failed';
   const ext = path.extname(filePath).toLowerCase();
 
   if (ext === '.rar' || ext === '.zip') {
@@ -90,13 +104,17 @@ function processCompletedFile(filePath) {
       let allOk = true;
       for (const extracted of extractRes.extractedFiles) {
         if (extracted.toLowerCase().endsWith('.pkg')) {
-          if (!processCompletedFile(extracted)) allOk = false;
+          if (processCompletedFile(extracted) !== 'completed') allOk = false;
         }
       }
-      return allOk;
+      return allOk ? 'completed' : 'failed';
+    }
+    if (extractRes.error && extractRes.error.includes('Volúmenes incompletos')) {
+      logPs5(TAG, `⏳ Volumen descargado en disco. Esperando partes restantes para descomprimir.`, LOG_FILE);
+      return 'deferred';
     }
     logPs5(TAG, `⚠️ Extracción pendiente o fallida: ${extractRes.error}`, LOG_FILE);
-    return false;
+    return 'failed';
   }
 
   if (ext === '.pkg') {
@@ -104,14 +122,14 @@ function processCompletedFile(filePath) {
     const val = validatePkg(filePath);
     if (!val.valid) {
       logPs5(TAG, `❌ PKG INVÁLIDO (${val.reason}): ${filePath}`, LOG_FILE);
-      return false;
+      return 'failed';
     }
     const targetDir = getBestTargetLibrary(filePath, LOG_FILE);
     const finalPath = moveFileToGameFolder(filePath, targetDir, LOG_FILE);
     logPs5(TAG, `🎉 JUEGO ORGANIZADO Y LISTO: ${path.basename(finalPath || filePath)} ➔ ${targetDir}`, LOG_FILE);
-    return true;
+    return 'completed';
   }
-  return false;
+  return 'failed';
 }
 
 /**
@@ -166,11 +184,26 @@ async function cycle() {
         if (item) {
           item.status = 'processing';
           saveQueue(queue);
-          const ok = filePath ? processCompletedFile(filePath) : false;
-          if (ok) {
+          const result = filePath ? processCompletedFile(filePath) : 'failed';
+          if (result === 'completed') {
             item.status = 'completed';
             item.completedAt = new Date().toISOString();
             logPs5(TAG, `✅ Ítem completado e instalado en biblioteca: ${item.name}`, LOG_FILE);
+
+            const multi = inspectMultiPart(path.basename(filePath));
+            if (multi.isMultiPart && multi.basePattern) {
+              for (const other of queue.items) {
+                if (other.status === 'downloaded' && other.url.toLowerCase().includes(multi.basePattern.toLowerCase())) {
+                  other.status = 'completed';
+                  other.completedAt = new Date().toISOString();
+                  logPs5(TAG, `✅ Marcada parte hermana completada: ${other.name}`, LOG_FILE);
+                }
+              }
+            }
+          } else if (result === 'deferred') {
+            item.status = 'downloaded';
+            item.note = 'Volumen en disco; esperando partes restantes';
+            logPs5(TAG, `📦 Volumen preservado en disco: ${item.name}`, LOG_FILE);
           } else {
             item.status = 'failed';
             item.error = 'Error en validación o extracción de archivo';
@@ -211,7 +244,10 @@ async function cycle() {
   }
 
   logPs5(TAG, `🚀 Encolando descarga en aria2: ${nextItem.name}`, LOG_FILE);
-  const addRes = await downloadEngine.addUri([resolved.directUrl], { dir: STAGING_DIR });
+  const options = { dir: STAGING_DIR };
+  const targetFilename = getFilenameFromUrl(nextItem.url);
+  if (targetFilename) options.out = targetFilename;
+  const addRes = await downloadEngine.addUri([resolved.directUrl], options);
   if (addRes.ok && addRes.gid) {
     nextItem.status = 'downloading';
     nextItem.gid = addRes.gid;

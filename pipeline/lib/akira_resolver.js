@@ -83,7 +83,21 @@ async function resolveDownloadUrl(pageUrl, logFile) {
     await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(2000);
 
-    // Intentar resolver captcha o click en botón de descarga
+    // 1. Manejo directo para Mediafire: captura del evento 'download'
+    if (pageUrl.includes('mediafire.com')) {
+      try {
+        const btn = page.locator('#downloadButton').first();
+        if ((await btn.count()) > 0) {
+          const [ dl ] = await Promise.all([
+            page.waitForEvent('download', { timeout: 8000 }),
+            btn.click(),
+          ]);
+          directUrl = dl.url();
+        }
+      } catch {}
+    }
+
+    // 2. Intentar resolver captcha o click en botón de descarga (AkiraBox / genérico)
     for (let i = 0; i < 10 && !directUrl; i++) {
       try {
         const btn = page.locator('#download, a:has-text("Download"), button:has-text("Download")').first();
