@@ -21,6 +21,8 @@ scratch/
 *.exe
 *.elf
 *.bin
+*.pdb
+tools/external/
 *.zip
 *.rar
 *.7z
