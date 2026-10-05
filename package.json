@@ -23,7 +23,7 @@
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
     "ps5:aria-pilot": "node pipeline/scripts/aria_pilot.js",
-    "test": "node --test pipeline/tests/*.test.js"
+    "test": "node pipeline/tests/run_all.js"
   },
   "optionalDependencies": {
     "playwright-core": "^1.49.0"
