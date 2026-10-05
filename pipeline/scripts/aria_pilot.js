@@ -73,14 +73,15 @@ function saveQueue(state) {
 
 function getFilenameFromUrl(url) {
   try {
-    const parts = url.split('/');
-    const fileIdx = parts.lastIndexOf('file');
-    if (fileIdx > 0 && parts[fileIdx - 1]) {
-      const cand = decodeURIComponent(parts[fileIdx - 1]);
+    const { URL } = require('node:url');
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    let cand = parts.pop();
+    if (cand === 'file' && parts.length > 0) cand = parts.pop();
+    if (cand) {
+      cand = decodeURIComponent(cand).replace(/^[a-zA-Z0-9_-]{15,30}-/, '');
       if (cand.includes('.')) return cand;
     }
-    const last = parts.filter(Boolean).pop();
-    if (last && last.includes('.')) return decodeURIComponent(last);
   } catch {}
   return null;
 }

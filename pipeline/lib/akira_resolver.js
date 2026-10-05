@@ -21,6 +21,7 @@ const TAG = 'RESOLVER';
 function isDirectDownloadUrl(url) {
   if (!url || typeof url !== 'string') return false;
   const lower = url.toLowerCase();
+  if (lower.includes('download.akirabox.com')) return true;
   if (lower.includes('/download/') && (lower.includes('expiration=') || lower.includes('access='))) return true;
   if (lower.includes('mediafire.com') && lower.includes('/mp8hvhvny')) return true;
   if (lower.includes('1fichier.com') && lower.includes('&inline=')) return true;
