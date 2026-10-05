@@ -18,7 +18,7 @@ const { ps5HttpGet } = require('../lib/ps5_client.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
-const INSTALLED_FILE = path.resolve(__dirname, '..', '..', 'installed_pkgs_ps5.json');
+const INSTALLED_FILE = cfg.state.installedFile || path.join(cfg.state.cacheDir, 'installed_pkgs.json');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'lan_installer.log');
 const TAG = 'LAN_INSTALLER';
 

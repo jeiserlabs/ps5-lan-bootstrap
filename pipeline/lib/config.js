@@ -36,7 +36,12 @@ const DEFAULTS = {
     backoffMaxMs: 1800000,
   },
   archivePasswords: ['DLPSGAME.COM', 'hako', 'downloadgameps3.com'],
-  state: { cacheDir: CACHE_DIR, logFile: LOG_FILE },
+  state: {
+    cacheDir: CACHE_DIR,
+    logFile: LOG_FILE,
+    queueFile: path.join(CACHE_DIR, 'queue_state.json'),
+    installedFile: path.join(CACHE_DIR, 'installed_pkgs.json'),
+  },
 };
 
 /**

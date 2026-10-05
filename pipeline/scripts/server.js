@@ -23,13 +23,14 @@ const PORT = portArgIdx >= 0 ? Number(process.argv[portArgIdx + 1]) : cfg.ps5.se
 const PID_FILE = path.join(cfg.state.cacheDir, 'server.pid');
 
 /**
- * Búsqueda difusa recursiva (fallback con aviso).
+ * Búsqueda exacta recursiva en subdirectorios de biblioteca.
+ * Cero fuzzy matching: el nombre de archivo debe coincidir exactamente.
  * @param {string} dir
  * @param {string} target
  * @param {number} depth
  * @returns {string|null}
  */
-function fuzzyFind(dir, target, depth) {
+function findExactInSubdirs(dir, target, depth) {
   if (depth < 0) return null;
   let entries;
   try {
@@ -37,24 +38,25 @@ function fuzzyFind(dir, target, depth) {
   } catch {
     return null;
   }
+  const targetLower = target.toLowerCase();
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      const found = fuzzyFind(full, target, depth - 1);
+      const found = findExactInSubdirs(full, target, depth - 1);
       if (found) return found;
-    } else if (entry.name.toLowerCase().includes(target.toLowerCase())) {
+    } else if (entry.name.toLowerCase() === targetLower) {
       return full;
     }
   }
   return null;
 }
 
-/** @type {Map<string, { filePath: string, fuzzy: boolean }>} */
+/** @type {Map<string, { filePath: string }>} */
 const pkgPathCache = new Map();
 
 /**
  * @param {string} filename
- * @returns {{ filePath: string, fuzzy: boolean } | null}
+ * @returns {{ filePath: string } | null}
  */
 function resolvePkg(filename) {
   if (pkgPathCache.has(filename)) {
@@ -64,7 +66,7 @@ function resolvePkg(filename) {
     const exact = path.join(dir, filename);
     try {
       if (isPathInside(dir, exact) && fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
-        const res = { filePath: exact, fuzzy: false };
+        const res = { filePath: exact };
         pkgPathCache.set(filename, res);
         return res;
       }
@@ -73,9 +75,9 @@ function resolvePkg(filename) {
     }
   }
   for (const dir of cfg.paths.libraryDirs) {
-    const found = fuzzyFind(dir, filename, 3);
-    if (found) {
-      const res = { filePath: found, fuzzy: true };
+    const found = findExactInSubdirs(dir, filename, 3);
+    if (found && isPathInside(dir, found)) {
+      const res = { filePath: found };
       pkgPathCache.set(filename, res);
       return res;
     }
@@ -121,11 +123,6 @@ const server = http.createServer((req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('File not found');
     return;
-  }
-  if (resolved.fuzzy) {
-    logThrottled(filename, `AVISO: resolución difusa para ${filename} -> ${path.basename(resolved.filePath)} (no había coincidencia exacta)`);
-  }
-
   const { filePath } = resolved;
   let stat;
   try {

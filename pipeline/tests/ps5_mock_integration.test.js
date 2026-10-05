@@ -46,14 +46,14 @@ function createPs5MockServer() {
       const payloadName = decodeURIComponent(url.replace('/loadpayload:', ''));
       state.payloadsLoaded.push(payloadName);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
+      res.end(state.payloadResponse || 'OK');
     } else if (url.startsWith('/install?')) {
       const params = new URLSearchParams(url.split('?')[1]);
       const pkgUrl = params.get('url') || '';
       const pkgName = params.get('name') || '';
       state.installedPkgs.push({ url: pkgUrl, name: pkgName });
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'success', message: 'Task created' }));
+      res.end(state.installResponse || JSON.stringify({ status: 'success', message: 'Task created' }));
     } else if (url === '/api/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ busy: false, pull: false }));
@@ -110,6 +110,22 @@ test('PS5 Integration Mock — Ejecuta cliente de PRODUCCIÓN (ps5_client.js) co
     state.shouldFail = true;
     const version = await queryPs5Version(ip, port);
     assert.equal(version, null);
+    state.shouldFail = false;
+  });
+
+  await t.test('7. Fail-Closed: triggerPkgInstall() detecta error aun con HTTP 200 ({ ok: false })', async () => {
+    state.installResponse = JSON.stringify({ ok: false, error: 'installation failed', code: 0x80010001 });
+    const result = await triggerPkgInstall(ip, port, 'http://dummy.pkg', 'dummy.pkg');
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'installation failed');
+    state.installResponse = null;
+  });
+
+  await t.test('8. Fail-Closed: injectPayload() rechaza respuestas como "not ok" o "error" con HTTP 200', async () => {
+    state.payloadResponse = 'not ok - payload memory full';
+    const ok = await injectPayload(ip, port, 'kstuff.elf');
+    assert.equal(ok, false);
+    state.payloadResponse = null;
   });
 
   await new Promise((resolve) => server.close(resolve));

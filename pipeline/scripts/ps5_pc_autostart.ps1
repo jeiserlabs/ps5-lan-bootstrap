@@ -68,14 +68,9 @@ if (Test-PidAlive $wdPid) {
 
 # 3) Host del exploit (DNS+HTTPS 100% local: manuals.playstation.net -> 192.168.2.1)
 #    Sin el, la app WebKit Autoloader no carga pagina tras un reinicio de la PS5.
-$hostUp = $false
-try {
-  $t = New-Object Net.Sockets.TcpClient
-  $t.ConnectAsync('192.168.2.1', 443).Wait(2500) | Out-Null
-  $hostUp = $t.Connected; $t.Close()
-} catch {}
-if ($hostUp) {
-  Write-Log 'Host exploit DNS+HTTPS: ya activo, no se duplica.'
+$hostProc = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'webkit-autoloader-host' }
+if ($hostProc) {
+  Write-Log 'Host exploit DNS+HTTPS: proceso python ya activo, no se duplica.'
 } else {
   $hostDir = Join-Path $root 'ps5-host'
   Start-Process -FilePath 'C:\Python314\python.exe' `

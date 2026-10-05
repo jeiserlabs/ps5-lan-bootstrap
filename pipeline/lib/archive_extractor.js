@@ -12,6 +12,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { getPs5Config } = require('./config.js');
 const { logPs5 } = require('./pipeline_log.js');
+const { isPathInside } = require('./security.js');
 
 const cfg = getPs5Config();
 const SEVEN_ZIP = cfg.paths.sevenZipExe || 'C:\\Program Files\\7-Zip\\7z.exe';
@@ -150,7 +151,18 @@ function extractArchive(archivePath, outDir, logFile) {
   logPs5(TAG, `🔓 Descompresión exitosa de ${path.basename(archivePath)} (pwd: ${usedPassword})`, logFile);
 
   const afterFiles = fs.readdirSync(outDir);
-  const newFiles = afterFiles.filter((f) => !beforeFiles.has(f)).map((f) => path.join(outDir, f));
+  const newFiles = [];
+  for (const f of afterFiles) {
+    if (beforeFiles.has(f)) continue;
+    const fullPath = path.join(outDir, f);
+    if (!isPathInside(outDir, fullPath)) {
+      const escapeErr = `ALERTA DE SEGURIDAD (Zip Slip): archivo fuera de outDir: ${fullPath}`;
+      logPs5(TAG, `🚨 ${escapeErr}`, logFile);
+      try { fs.unlinkSync(fullPath); } catch {}
+      return { success: false, extractedFiles: [], error: escapeErr };
+    }
+    newFiles.push(fullPath);
+  }
 
   return { success: true, extractedFiles: newFiles };
 }

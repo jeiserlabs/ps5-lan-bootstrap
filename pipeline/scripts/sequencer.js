@@ -100,7 +100,16 @@ function getIdmState() {
  * @returns {Promise<string|null>}
  */
 async function resolveDirectUrl(item) {
-  const { chromium } = require('playwright');
+  let chromium;
+  try {
+    chromium = require('playwright-core').chromium;
+  } catch {
+    try {
+      chromium = require('playwright').chromium;
+    } catch {
+      throw new Error('Playwright no está disponible. Ejecuta: npm install');
+    }
+  }
   const browser = await chromium.launch({
     executablePath: cfg.paths.braveExe,
     headless: false,

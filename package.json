@@ -2,7 +2,7 @@
   "name": "ps5-lan-bootstrap",
   "version": "1.2.0",
   "private": true,
-  "description": "Bootstrap del jailbreak PS5 por LAN + pipeline offline: una vez configurado, la consola no necesita PC ni internet. Cero dependencias npm.",
+  "description": "Bootstrap del jailbreak PS5 por LAN + pipeline offline: una vez configurado, la consola no necesita PC ni internet.",
   "repository": {
     "type": "git",
     "url": "https://github.com/jeiserlabs/ps5-lan-bootstrap.git"
@@ -23,5 +23,8 @@
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
     "test": "node --test pipeline/tests/*.test.js"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.49.0"
   }
 }

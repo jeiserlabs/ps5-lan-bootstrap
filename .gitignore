@@ -10,6 +10,8 @@
 *.log
 *.err
 data/
+installed_pkgs_ps5.json
+queue_state_ps5.json
 _staging/
 node_modules/
 __pycache__/
