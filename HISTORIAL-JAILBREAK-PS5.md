@@ -458,5 +458,25 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - **Reordenamiento Inteligente de Cola:** Tareas 100% vivas de MediaFire (MLB, Tsushima, GoW) priorizadas al inicio de la cola para descarga ininterrumpida; enlaces pendientes de refresco desplazados al final.
 - **Test Suite:** 39/39 pruebas pasando verde (`npm test`).
 
+## 25. Hito Mayor: 243 GB Listos, Fix Anti-Inanición 7z y Limpieza Total (4-oct noche)
+
+**1. Hito Consolidado de Descarga y Organización (243.34 GB en 37 PKGs):**
+- **MLB The Show 24 (`CUSA43942`):** Base v1.00 (48.33 GB) y Update v1.21 (33.92 GB) descomprimidos por 7-Zip, auditados con cabecera mágica `\x7fCNT`, verificados 100% íntegros y organizados en `C:\Biblioteca_Juegos_PS\MLB® The Show™ 24 (CUSA43942)\`. Se eliminaron automáticamente los volúmenes `.rar` liberando +50 GB en `E:\`.
+- **Horizon Zero Dawn Complete (`CUSA01967`):** Base (37.65 GB) + Update v1.54 (1.88 GB) + The Frozen Wilds DLC (7.83 GB) + 10 DLCs cosméticos listos en biblioteca.
+- **Mortal Kombat 11 Ultimate (`CUSA11518`):** Base (36.99 GB) + Update v1.30 All DLCs (32.38 GB) = 69.37 GB listos.
+- **It Takes Two (`CUSA16742`):** FullGame v1.03 (34.33 GB) + Optional Fix (0.01 GB) = 34.34 GB listos.
+- **Total Listo para Inyectar por LAN a la PS5:** **243.34 GB** (37 archivos PKG).
+
+**2. Corrección Crítica de Inanición en el Extractor (`archive_extractor.js`):**
+- **Causa Raíz:** Un archivo multi-parte incompleto (Ghost of Tsushima parte 5 en descarga) provocaba que `7z t` leyera gigabytes buscando partes faltantes hasta agotar timeout de 20s por contraseña (60s en total), bloqueando la extracción de archivos completos que se encontraban alfabéticamente después (`M_43942`).
+- **Solución:** Reemplazo por comprobación ultrarrápida (50ms) usando `7z l -slt` para inspeccionar la cabecera del archivo sin leer los datos. Se ajustó `idm_watcher.js` para actualizar `lastExtractionFinishedAt` únicamente tras extracciones exitosas.
+- **Suite de Pruebas:** Se añadieron pruebas en `pipeline/tests/archive_extractor.test.js`, alcanzando **61 tests verdes, 0 fallos, 0 skips**.
+
+**3. Depuración del Entorno y Cumplimiento de la Regla Cero Binarios (Rule 15):**
+- Se limpió el Escritorio (`C:\Users\dev\Desktop`): binarios y herramientas de PS5 (`webkit-autoloader-host_v0.5.2.exe`, `PkgSender`, payloads `.elf` y `.bin`) se trasladaron a `payloads/` y `tools/external/` protegidos bajo `.gitignore`.
+- Entregables académicos de bases de datos (`import_tech_database_completa.sql`) se integraron y pushearon al repositorio oficial de CESDE (`accde74`), con sus PDFs ignorados por `.gitignore`.
+- Currículums se archivaron en `resume/cv_versiones/` bajo `.gitignore`.
+- El repositorio `ps5-lan-bootstrap` se incrementó a la versión **1.2.0**.
+
 
 

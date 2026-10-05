@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-04
+
+### Added
+- **Multi-part Archive Extraction Tests:** Added `pipeline/tests/archive_extractor.test.js` covering multi-volume detection, extraction tools, and fail-fast scenarios (61/61 tests passing).
+- **Firmware Compatibility Matrix:** Added `payloads/compatibility.json` mapping FW versions (7.00 to 13.60, target 13.40) to required payload offsets.
+- **Automated Backup Pruning:** Added retention policy to `update_payloads.js` pruning older backups to a max of 5.
+
+### Fixed
+- **Archive Extraction Starvation:** Fixed priority inversion bug where incomplete archives (missing subsequent volumes) ran heavy test checks blocking alphabetically later archives. Implemented 50ms fast-fail volume check via `7z l -slt` and fixed cooldown handling in `idm_watcher.js`.
+- **PS5 Client Unification:** Eliminated redundant HTTP logic across `lan_installer.js` and `kstuff_watchdog.js`, consolidating on `pipeline/lib/ps5_client.js`.
+- **Binary Hardening:** Added `tools/external/` and `*.pdb` to `.gitignore` strictly enforcing zero-binary policy in Git (Rule 15).
+
 ## [1.1.0] - 2026-10-04
 
 ### Added
