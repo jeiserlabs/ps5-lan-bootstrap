@@ -1,12 +1,12 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { classifyPkg, getTitleId, planInstallOrder } from '../lib/pkg_rules.js';
-import { getPs5Config } from '../lib/config.js';
-import { sanitizeFolderName, resolveGameFolder, getBestTargetLibrary } from '../lib/library_organizer.js';
-import {
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const { classifyPkg, getTitleId, planInstallOrder } = require('../lib/pkg_rules.js');
+const { getPs5Config } = require('../lib/config.js');
+const { sanitizeFolderName, resolveGameFolder, getBestTargetLibrary } = require('../lib/library_organizer.js');
+const {
   STATUS,
   createState,
   decide,
@@ -19,7 +19,7 @@ import {
   matchesArtifact,
   loadState,
   saveState,
-} from '../lib/queue_state.js';
+} = require('../lib/queue_state.js');
 
 describe('pkg_rules — classifyPkg (nombres reales de la biblioteca)', () => {
   it('reconoce bases por v1.00 y por Game sin versión', () => {
