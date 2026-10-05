@@ -22,6 +22,7 @@
     "ps5:install-lan": "node pipeline/scripts/lan_installer.js",
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
+    "ps5:aria-pilot": "node pipeline/scripts/aria_pilot.js",
     "test": "node --test pipeline/tests/*.test.js"
   },
   "optionalDependencies": {
