@@ -36,26 +36,29 @@
     {
       "name": "God of War 2018 (Base + All DLC Pack)",
       "url": "https://akirabox.to/qLQ36oZ7Yz19/file",
-      "status": "pending",
+      "status": "completed",
       "attempts": 0,
-      "note": "Base ~38.7 GB para casar con Update 1.36 (8 GB ya en PC) + DLC Pack armaduras y escudos",
-      "tags": ["CUSA07410"]
+      "completedAt": "2026-10-04T23:56:00.000Z",
+      "note": "Base ~38.7 GB + Update 1.35 + 8 DLC Pack listos en disco (CUSA07408)",
+      "tags": ["CUSA07410", "CUSA07408"]
     },
     {
       "name": "Ghost of Tsushima Director's Cut (Base + Update 2.24 + All DLC Merged)",
       "url": "https://1fichier.com/?9e9o6r0z2heysvcstwks",
-      "status": "pending",
+      "status": "completed",
       "attempts": 0,
+      "completedAt": "2026-10-04T22:25:00.000Z",
       "note": "Incluye Isla de Iki, modo Legends, Hero of Tsushima y Director's Commentary (~50 GB)",
       "tags": ["CUSA16972", "CUSA13323"]
     },
     {
-      "name": "God of War Ragnarök (Base CUSA34386)",
+      "name": "God of War Ragnarök (Base CUSA34384)",
       "url": "https://akirabox.to/k0embRxnmVb4/file",
-      "status": "pending",
+      "status": "completed",
       "attempts": 0,
-      "note": "Base ~84 GB para casar con Update 6.02 (23.4 GB) y Valhalla DLC (8.2 GB) ya listos en disco PC",
-      "tags": ["CUSA34386"]
+      "completedAt": "2026-10-05T02:03:00.000Z",
+      "note": "Base ~84.3 GB lista e íntegra en C:. Update 6.05 en descarga en IDM.",
+      "tags": ["CUSA34384", "CUSA34386"]
     },
     {
       "name": "Naruto Storm 4 Road to Boruto",
@@ -66,5 +69,5 @@
       "completedAt": "2026-10-01T23:37:11.522Z"
     }
   ],
-  "updatedAt": "2026-10-01T23:46:40.000Z"
+  "updatedAt": "2026-10-05T05:35:00.000Z"
 }
