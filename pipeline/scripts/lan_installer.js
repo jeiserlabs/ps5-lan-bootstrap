@@ -15,6 +15,7 @@ const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
 const { sanitizeFilename } = require('../lib/security.js');
 const { ps5HttpGet } = require('../lib/ps5_client.js');
+const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
@@ -46,10 +47,8 @@ function collectLibraryPkgs(dir, depth = 2) {
   if (depth < 0 || !fs.existsSync(dir)) return pkgs;
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, ent.name);
-    if (ent.isDirectory()) {
-      if (ent.name !== '_staging' && ent.name !== '_extracted') {
-        pkgs.push(...collectLibraryPkgs(full, depth - 1));
-      }
+    if (ent.isDirectory() && ent.name !== '_staging' && ent.name !== '_extracted') {
+      pkgs.push(...collectLibraryPkgs(full, depth - 1));
     } else if (ent.name.toLowerCase().endsWith('.pkg')) {
       pkgs.push(full);
     }
@@ -76,60 +75,66 @@ async function ensureFtpAlive() {
   }
 }
 
-function verifyFtpInstalled(titleId, category) {
+function verifyFtpInstalled(titleId, category, contentId) {
   try {
     const pyScript = path.join(__dirname, 'verify_installed_ftp.py');
     const { execFileSync } = require('node:child_process');
-    const out = execFileSync('python', [pyScript, titleId, category], { encoding: 'utf8', timeout: 8000 });
+    const args = [pyScript, titleId, category];
+    if (contentId) args.push(contentId);
+    const out = execFileSync('python', args, { encoding: 'utf8', timeout: 8000 });
     return out.trim() === 'OK';
   } catch {
     return false;
   }
 }
 
-async function waitForPkgTransfer(filename, expectedSize, titleId, category) {
+async function waitForPkgTransfer(filename, expectedSize, titleId, category, contentId) {
   let lastRangeTime = Date.now();
   let lastEndByte = 0;
   let hasStarted = false;
   let lastReportedPct = -1;
 
-  for (let i = 0; i < 1080; i++) {
-    await sleep(5000);
-    try {
-      if (fs.existsSync(cfg.state.logFile)) {
-        const content = fs.readFileSync(cfg.state.logFile, 'utf8');
-        const lines = content.trim().split('\n').filter((l) => l.includes(filename) && l.includes('[SERVER] RANGE'));
-        if (lines.length > 0) {
-          hasStarted = true;
-          const lastLine = lines[lines.length - 1];
-          const m = lastLine.match(/RANGE "bytes=(\d+)-(\d+)"/);
-          if (m) {
-            const endByte = Number(m[2]);
-            if (endByte > lastEndByte) {
-              lastEndByte = endByte;
-              lastRangeTime = Date.now();
-              const pct = Math.floor((lastEndByte / expectedSize) * 100);
-              if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
-                lastReportedPct = pct;
-                logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
+  if (expectedSize < 20 * 1024 * 1024) {
+    await sleep(2000);
+  } else {
+    for (let i = 0; i < 1080; i++) {
+      await sleep(5000);
+      try {
+        if (fs.existsSync(cfg.state.logFile)) {
+          const content = fs.readFileSync(cfg.state.logFile, 'utf8');
+          const lines = content.trim().split('\n').filter((l) => l.includes(filename) && l.includes('[SERVER] RANGE'));
+          if (lines.length > 0) {
+            hasStarted = true;
+            const lastLine = lines[lines.length - 1];
+            const m = lastLine.match(/RANGE "bytes=(\d+)-(\d+)"/);
+            if (m) {
+              const endByte = Number(m[2]);
+              if (endByte > lastEndByte) {
+                lastEndByte = endByte;
+                lastRangeTime = Date.now();
+                const pct = Math.floor((lastEndByte / expectedSize) * 100);
+                if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
+                  lastReportedPct = pct;
+                  logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
+                }
               }
-            }
-            if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
-              logPs5(TAG, `📦 100% transferido (${(expectedSize / 1e9).toFixed(2)} GB). Consolidando en PS5...`, LOG_FILE);
-              break;
+              if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
+                logPs5(TAG, `📦 100% transferido (${(expectedSize / 1e9).toFixed(2)} GB). Consolidando en PS5...`, LOG_FILE);
+                break;
+              }
             }
           }
         }
-      }
-    } catch {}
+      } catch {}
 
-    if (hasStarted && Date.now() - lastRangeTime > 180000) {
-      if (expectedSize > 0 && lastEndByte >= expectedSize * 0.98) {
-        logPs5(TAG, `Transferencia HTTP cesó con ${(lastEndByte / 1e9).toFixed(2)} GB (>=98%). Verificando...`, LOG_FILE);
-        break;
+      if (hasStarted && Date.now() - lastRangeTime > 180000) {
+        if (expectedSize > 0 && lastEndByte >= expectedSize * 0.98) {
+          logPs5(TAG, `Transferencia HTTP cesó con ${(lastEndByte / 1e9).toFixed(2)} GB (>=98%). Verificando...`, LOG_FILE);
+          break;
+        }
+        logPs5(TAG, `❌ Transferencia estancada a los ${(lastEndByte / 1e9).toFixed(2)} GB. Abortando.`, LOG_FILE);
+        return false;
       }
-      logPs5(TAG, `❌ Transferencia estancada a los ${(lastEndByte / 1e9).toFixed(2)} GB. Abortando.`, LOG_FILE);
-      return false;
     }
   }
 
@@ -142,18 +147,18 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category) {
         if (!state.busy && !state.pull) break;
       } catch {}
     }
-    await sleep(5000);
+    await sleep(2000);
   }
 
   await ensureFtpAlive();
   for (let v = 0; v < 24; v++) {
-    const isOk = verifyFtpInstalled(titleId, category);
+    const isOk = verifyFtpInstalled(titleId, category, contentId);
     if (isOk) {
       logPs5(TAG, `🎯 VERIFICACIÓN FTP EXITOSA: [${titleId}] confirmado en PS5 (${category})`, LOG_FILE);
       return true;
     }
     if (v === 4 || v === 12) await ensureFtpAlive();
-    await sleep(5000);
+    await sleep(2500);
   }
 
   logPs5(TAG, `❌ VERIFICACIÓN FTP FALLÓ: [${titleId}] NO se encontró en PS5 (${category}).`, LOG_FILE);
@@ -193,13 +198,16 @@ async function installPkg(pkgPath, dryRun = false) {
 
   await sleep(5000);
 
-  const completed = await waitForPkgTransfer(filename, audit.info.sizeBytes, audit.info.titleId, category);
+  const completed = await waitForPkgTransfer(filename, audit.info.sizeBytes, audit.info.titleId, category, audit.info.contentId);
   if (completed) {
     logPs5(TAG, `✅ INSTALACIÓN COMPLETADA Y VERIFICADA: ${filename}`, LOG_FILE);
     const installed = loadInstalledList();
     if (!installed.includes(filename)) {
       installed.push(filename);
       saveInstalledList(installed);
+    }
+    if (!dryRun && (audit.info.sizeBytes > 1024 * 1024 * 1024 || category === 'BASE')) {
+      sendTelegramMessage(`✅ *PS5 Instalado*: [${audit.info.titleId}] ${filename} (${sizeGb} GB) verificado en consola.`);
     }
     try {
       if (fs.existsSync(pkgPath)) {
@@ -210,17 +218,16 @@ async function installPkg(pkgPath, dryRun = false) {
       }
     } catch {}
     return true;
-  } else {
-    logPs5(TAG, `❌ Instalación de ${filename} falló o no superó la verificación.`, LOG_FILE);
-    return false;
   }
+  logPs5(TAG, `❌ Instalación de ${filename} falló o no superó la verificación.`, LOG_FILE);
+  if (!dryRun) sendTelegramMessage(`❌ *PS5 Error*: Falló verificación de [${audit.info.titleId}] ${filename}.`);
+  return false;
 }
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run');
   const titleArgIdx = process.argv.indexOf('--title');
   const titleFilter = titleArgIdx >= 0 ? process.argv[titleArgIdx + 1].toUpperCase() : null;
-
   logPs5(TAG, `=== INICIO DE ORQUESTADOR LAN (FASE 2)${titleFilter ? ` [Filtro: ${titleFilter}]` : ''} ===`, LOG_FILE);
 
   const serverOk = await ensureServerRunning();
@@ -229,37 +236,39 @@ async function main() {
     process.exit(1);
   }
 
+  const failedSet = new Set();
   while (true) {
     let allPkgs = LIB_DIRS.flatMap((dir) => collectLibraryPkgs(dir, 3));
-    if (titleFilter) {
-      allPkgs = allPkgs.filter((p) => path.basename(p).toUpperCase().includes(titleFilter));
-    }
+    if (titleFilter) allPkgs = allPkgs.filter((p) => path.basename(p).toUpperCase().includes(titleFilter));
     const installed = loadInstalledList();
-    const { plan, held } = pkgRules.planInstallOrder(allPkgs, installed);
+    const { plan: rawPlan, held } = pkgRules.planInstallOrder(allPkgs, installed);
+    const plan = rawPlan.filter((p) => !failedSet.has(path.basename(p)));
+    plan.sort((a, b) => {
+      try { return fs.statSync(a).size - fs.statSync(b).size; } catch { return 0; }
+    });
 
-    logPs5(TAG, `Paquetes encontrados: ${allPkgs.length} | Pendientes por instalar: ${plan.length}`, LOG_FILE);
-    if (held.length > 0) {
-      logPs5(TAG, `Paquetes retenidos a la espera de Base: ${held.length}`, LOG_FILE);
-    }
-
+    logPs5(TAG, `Paquetes: ${allPkgs.length} | Pendientes: ${plan.length} | Omitidos: ${failedSet.size}`, LOG_FILE);
+    if (held.length > 0) logPs5(TAG, `Retenidos a la espera de Base: ${held.length}`, LOG_FILE);
     if (plan.length === 0) {
-      logPs5(TAG, '🎉 Todos los paquetes seleccionados ya están instalados y verificados en la PS5.', LOG_FILE);
+      logPs5(TAG, '🎉 Todos los paquetes seleccionados ya están instalados/procesados.', LOG_FILE);
+      if (!isDryRun) sendTelegramMessage('🎉 *PS5 LAN Pipeline*: Todos los paquetes pendientes están instalados.');
       break;
     }
 
+    if (!isDryRun) sendTelegramMessage(`🚀 *PS5 LAN Pipeline*: Lote de ${plan.length} paquetes...`);
     let batchSuccessCount = 0;
     for (let i = 0; i < plan.length; i++) {
       const pkg = plan[i];
       logPs5(TAG, `--- Lote [${i + 1}/${plan.length}] ---`, LOG_FILE);
       const ok = await installPkg(pkg, isDryRun);
       if (!ok) {
-        logPs5(TAG, `Pausando pipeline por fallo en paquete: ${path.basename(pkg)}`, LOG_FILE);
-        return;
+        failedSet.add(path.basename(pkg));
+        logPs5(TAG, `⚠️ Omitiendo paquete fallido y continuando: ${path.basename(pkg)}`, LOG_FILE);
+        continue;
       }
       batchSuccessCount++;
       await sleep(3000);
     }
-
     if (isDryRun || batchSuccessCount === 0) break;
   }
 
