@@ -25,7 +25,7 @@ Borrados del repo (git rm): pipeline/scripts/adb_auto_tether.ps1, pipeline/scrip
 Borrados logs: data/logs/adb_auto_tether.log, data/logs/tether_watchdog.log. Sin tareas programadas de tether (solo PS5_PC_Pipeline + Loop).
 
 ## 4. BIBLIOTECA PC (solo 3 archivos, Desktop y staging limpios)
-C:\Biblioteca_Juegos_PS: Bloodborne Update v1.09 60fps 172.9 MB (PENDIENTE instalar, compatible: mismo CUSA03173 + Content-ID EU) + 2 DLC Ragnarok EUR 0.5 MB c/u (validos, retenidos: sin base CUSA34386).
+C:\Biblioteca_Juegos_PS: 2 DLC Ragnarok EUR 0.5 MB c/u (validos, retenidos: sin base CUSA34386). Update BB 1080p60fps PURGADO 06-oct (PS5 lo descargo 100% por LAN y lo rechazo al consolidar; entrada falsa re-eliminada del SSOT, queda 38).
 E:\Biblioteca_Juegos_PS: vacia. Desktop: 0 .pkg/.rar/.zip (IDM-only confirmado).
 
 ## 5. BLOODBORNE — RESPUESTAS (contexto: PS5 corriendo FPKGs de PS4)
@@ -33,6 +33,8 @@ E:\Biblioteca_Juegos_PS: vacia. Desktop: 0 .pkg/.rar/.zip (IDM-only confirmado).
 - Sin update SE PUEDE jugar, pero a 30fps con tiempos de carga largos y bugs de la 1.00 (Chalice, caidas puntuales). El update v1.09 oficial corrige eso.
 - El update que tienes NO es Sony puro: es 1.09 + parche 60fps de la escena (mismo Title/Content-ID, pasa validacion forense). En PS5 con kstuff es lo recomendado: 30 -> 60fps reales. Necesario? No. Deseable? Mucho.
 - Accion: al corregir el SSOT el update quedo pendiente y el daemon vivo lo instalara solo (181 MB, ~1 min, consola idle). Si NO lo quieres, dilo y lo retengo/borro.
+- GOTY (verificado en DLPSGame 06-oct): la edicion GOTY EUR es el MISMO CUSA03173 (bundle base + Old Hunters integrado, no requiere DLC separado). JPN Old Hunters Edition es CUSA03014 (evitar). Update correcto = v1.09 de CUSA03173 (el que ya tenemos). Nota escena: updates 60fps modeados a veces exigen repack (reporte CE-36434-0 sobre GOTY); si el 1080p falla, plan B = 720p60fps o 1.09 oficial puro.
+- GOTY vs Complete (06-oct): ambas ediciones EUR son el MISMO CUSA03173 con Old Hunters integrado; difieren solo en nombre del release de la escena. No existe Ultimate oficial de Bloodborne. El oficial 1.09 instala en cualquier CUSA03173; lo que el PS5 rechaza es el repack modeado 60fps mal hecho (probado: RANGE 100% + rollback, sin patch.pkg). NO re-descargar base 29 GB (la instalada funciona): traer solo update oficial 1.09 u otro 60fps de mejor fuente.
 
 ## 6. SIGUIENTES ACCIONES
 1. (auto) Daemon instala Bloodborne Update v1.09 60fps salvo orden contraria.
