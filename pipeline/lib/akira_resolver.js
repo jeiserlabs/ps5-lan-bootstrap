@@ -39,6 +39,91 @@ function getChromium() {
 }
 
 /**
+ * Lanza un contexto Brave persistente (perfil dedicado en disco).
+ * Las cookies (incl. clearance de Cloudflare Turnstile) sobreviven entre runs.
+ * @param {boolean} headed
+ */
+async function launchPersistent(headed) {
+  try {
+    const chromium = getChromium();
+    if (!chromium) return null;
+    const fs = require('node:fs');
+    fs.mkdirSync(cfg.paths.braveProfileDir, { recursive: true });
+    const context = await chromium.launchPersistentContext(cfg.paths.braveProfileDir, {
+      executablePath: cfg.paths.braveExe,
+      headless: !headed,
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: [
+        '--window-size=1280,800',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-automation',
+      ],
+    });
+    await context.addInitScript(() => {
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch {}
+    });
+    return {
+      context,
+      close: async () => {
+        try { await context.close(); } catch {}
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Flujo AkiraBox: Espera → Verificar (Turnstile) → Descargar.
+ * Requiere perfil con clearance vigente (ver seed_aria_profile.js).
+ * @param {string} pageUrl
+ * @param {string} [logFile]
+ * @param {boolean} headed
+ * @returns {Promise<{ ok: boolean, directUrl?: string, error?: string }>}
+ */
+async function resolveAkiraBox(pageUrl, logFile, headed = false) {
+  const launched = await launchPersistent(headed);
+  if (!launched) {
+    return { ok: false, error: 'Playwright no está disponible para resolver URLs web.' };
+  }
+  const { context, close } = launched;
+  try {
+    const page = await context.newPage();
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    // 1. Esperar que el botón #download se habilite (timer + Turnstile)
+    let enabled = false;
+    for (let i = 0; i < 90 && !enabled; i++) {
+      try {
+        const cls = await page.locator('#download').first().getAttribute('class', { timeout: 1500 });
+        enabled = Boolean(cls && !cls.includes('pointer-events-none'));
+      } catch {}
+      if (!enabled) await page.waitForTimeout(2000);
+    }
+    if (!enabled) {
+      return { ok: false, error: 'Botón de descarga nunca se habilitó (timer o Turnstile sin clearance). Re-ejecutar seed_aria_profile.js.' };
+    }
+    // 2. Clic y captura del evento download (URL firmada fresca)
+    const dlPromise = page.waitForEvent('download', { timeout: 30000 }).catch(() => null);
+    await page.locator('#download').first().click({ timeout: 10000 });
+    const dl = await dlPromise;
+    if (!dl) return { ok: false, error: 'Clic sin evento download.' };
+    const directUrl = dl.url();
+    await dl.cancel().catch(() => {});
+    if (!directUrl || !directUrl.startsWith('http')) {
+      return { ok: false, error: 'URL firmada inválida.' };
+    }
+    logPs5(TAG, `✅ AkiraBox resuelto: ${directUrl.substring(0, 60)}...`, logFile);
+    return { ok: true, directUrl };
+  } catch (err) {
+    return { ok: false, error: `AkiraBox: ${err.message}` };
+  } finally {
+    try { await close(); } catch {}
+  }
+}
+
+/**
  * Resuelve una URL de página web a su enlace directo firmado.
  * @param {string} pageUrl
  * @param {string} [logFile]
@@ -47,6 +132,12 @@ function getChromium() {
 async function resolveDownloadUrl(pageUrl, logFile) {
   if (isDirectDownloadUrl(pageUrl)) {
     return { ok: true, directUrl: pageUrl };
+  }
+
+  // AkiraBox con Turnstile: perfil persistente + flujo Espera→Verificar→Descargar
+  if (pageUrl.includes('akirabox.to') || pageUrl.includes('akirabox.com')) {
+    logPs5(TAG, `🌐 Flujo AkiraBox (perfil persistente): ${pageUrl}`, logFile);
+    return resolveAkiraBox(pageUrl, logFile, false);
   }
 
   const chromium = getChromium();
@@ -133,4 +224,5 @@ async function resolveDownloadUrl(pageUrl, logFile) {
 module.exports = {
   isDirectDownloadUrl,
   resolveDownloadUrl,
+  resolveAkiraBox,
 };

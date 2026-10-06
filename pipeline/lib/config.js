@@ -22,15 +22,15 @@ const DEFAULTS = {
   paths: {
     watchDir: 'C:\\Users\\dev\\Desktop',
     libraryDirs: ['C:\\Biblioteca_Juegos_PS', 'E:\\Biblioteca_Juegos_PS'],
-    idmDataDir: 'C:\\Users\\dev\\AppData\\Roaming\\IDM\\DwnlData\\dev',
-    idmExe: 'C:\\Program Files (x86)\\Internet Download Manager\\IDMan.exe',
+    stagingDir: 'E:\\staging',
+    braveProfileDir: 'E:\\ps5\\data\\browser_profiles\\brave_aria_profile',
     braveExe: 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
     winrarExe: 'C:\\Program Files\\WinRAR\\WinRAR.exe',
     sevenZipExe: 'C:\\Program Files\\7-Zip\\7z.exe',
   },
   queue: {
     pollMs: 30000,
-    idmActiveWindowMs: 25000,
+    ariaActiveWindowMs: 25000,
     maxAttempts: 4,
     backoffBaseMs: 120000,
     backoffMaxMs: 1800000,
@@ -73,7 +73,8 @@ function applyEnv(cfg) {
   if (process.env.PS5_PC_IP) out.ps5.pcIp = process.env.PS5_PC_IP;
   if (process.env.PS5_DESKTOP) out.paths.watchDir = process.env.PS5_DESKTOP;
   if (process.env.PS5_LIBRARY_DIRS) out.paths.libraryDirs = process.env.PS5_LIBRARY_DIRS.split(';').filter(Boolean);
-  if (process.env.PS5_IDM_DIR) out.paths.idmDataDir = process.env.PS5_IDM_DIR;
+  if (process.env.PS5_STAGING) out.paths.stagingDir = process.env.PS5_STAGING;
+  if (process.env.PS5_BRAVE_PROFILE) out.paths.braveProfileDir = process.env.PS5_BRAVE_PROFILE;
   if (process.env.PS5_BRAVE_EXE) out.paths.braveExe = process.env.PS5_BRAVE_EXE;
   if (process.env.PS5_WINRAR_EXE) out.paths.winrarExe = process.env.PS5_WINRAR_EXE;
   if (process.env.PS5_7ZIP_EXE) out.paths.sevenZipExe = process.env.PS5_7ZIP_EXE;

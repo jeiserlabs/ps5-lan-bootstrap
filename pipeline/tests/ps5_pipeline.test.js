@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyPkg, getTitleId, planInstallOrder } = require('../lib/pkg_rules.js');
+const { classifyPkg, getTitleId, planInstallOrder, isModBlocked } = require('../lib/pkg_rules.js');
 const { getPs5Config } = require('../lib/config.js');
 const { sanitizeFolderName, resolveGameFolder, getBestTargetLibrary } = require('../lib/library_organizer.js');
 const {
@@ -104,6 +104,31 @@ describe('pkg_rules — planInstallOrder (cascada)', () => {
     const res = planInstallOrder(['SomeRepack_Update_v2.01.pkg'], []);
     assert.deepEqual(res.plan, ['SomeRepack_Update_v2.01.pkg']);
   });
+
+  it('no reinstala base con otro nombre (Tsushima FULLGAME duplicado)', () => {
+    const dup = 'Ghost.of.Tsushima_CUSA13323_FULLGAME_v2.24_[9.00-11.00]_OPOISSO893-[DLPSGAME.COM].pkg';
+    const res = planInstallOrder([dup], ['CUSA13323_BASE.pkg']);
+    assert.deepEqual(res.plan, []);
+  });
+
+  it('no salta DLCs distintos del mismo título', () => {
+    const dlcNuevo = 'GameX_CUSA11111_EXTRA_PACK_DLC.pkg';
+    const res = planInstallOrder([dlcNuevo], ['GameX_CUSA11111_BONUS_PACK_DLC.pkg', 'GameX_CUSA11111_v1.00.pkg']);
+    assert.deepEqual(res.plan, [dlcNuevo]);
+  });
+});
+
+describe('pkg_rules — isModBlocked (guarda anti-mod)', () => {
+  it('bloquea mods Unlock-All y ALL.DLC-MOD', () => {
+    assert.equal(isModBlocked('MORTALKOMBAT11-LAT-Update.v1.30.ALL.DLC-MOD-RwO-[DLPSGAME.COM].pkg'), true);
+    assert.equal(isModBlocked('[CUSA11518][1.30][ALL DLC + Mod Unlock All Content].pkg'), true);
+  });
+
+  it('no confunde deluxe/model ni fixes normales', () => {
+    assert.equal(isModBlocked('CTR_NITRO-FUELED_DELUXE_PACK_DLC_FXD.pkg'), false);
+    assert.equal(isModBlocked('It.Takes.Two_CUSA16742_v1.03_OptionalFix_[8.00]_OPOISSO893.pkg'), false);
+    assert.equal(isModBlocked('UP9000-CUSA28561_00-A0100-V0100-CyB1K.pkg'), false);
+  });
 });
 
 describe('queue_state — decide', () => {
@@ -112,35 +137,35 @@ describe('queue_state — decide', () => {
     { name: 'Miles Morales', url: 'https://a/2' },
   ];
 
-  it('con IDM ocupado y nada inyectado espera (no interfiere)', () => {
+  it('con aria2c ocupado y nada inyectado espera (no interfiere)', () => {
     const state = createState(items);
-    assert.equal(decide(state, { idmBusy: true, now: 1 }).type, 'wait');
+    assert.equal(decide(state, { busy: true, now: 1 }).type, 'wait');
   });
 
-  it('con IDM ocupado y una inyección activa espera', () => {
+  it('con aria2c ocupado y una inyección activa espera', () => {
     const state = createState(items);
     markInjected(state, 0);
-    assert.equal(decide(state, { idmBusy: true, now: 1 }).type, 'wait');
+    assert.equal(decide(state, { busy: true, now: 1 }).type, 'wait');
   });
 
-  it('con IDM libre y una inyección activa completa el item', () => {
+  it('con aria2c libre y una inyección activa completa el item', () => {
     const state = createState(items);
     markInjected(state, 0);
-    const action = decide(state, { idmBusy: false, now: 1 });
+    const action = decide(state, { busy: false, now: 1 });
     assert.deepEqual(action, { type: 'complete', index: 0 });
   });
 
-  it('con IDM libre inyecta el siguiente pendiente', () => {
+  it('con aria2c libre inyecta el siguiente pendiente', () => {
     const state = createState(items);
     markCompleted(state, 0);
-    assert.deepEqual(decide(state, { idmBusy: false, now: 1 }), { type: 'inject', index: 1 });
+    assert.deepEqual(decide(state, { busy: false, now: 1 }), { type: 'inject', index: 1 });
   });
 
   it('cola terminada devuelve none', () => {
     const state = createState(items);
     markCompleted(state, 0);
     markSkipped(state, 1);
-    assert.equal(decide(state, { idmBusy: false, now: 1 }).type, 'none');
+    assert.equal(decide(state, { busy: false, now: 1 }).type, 'none');
   });
 });
 
@@ -161,7 +186,7 @@ describe('queue_state — backoff y reconciliación', () => {
   it('un pendiente en backoff no es elegible todavía', () => {
     const state = createState([{ name: 'A', url: 'u' }]);
     state.items[0].nextAttemptAt = 999999;
-    assert.equal(decide(state, { idmBusy: false, now: 1 }).type, 'wait');
+    assert.equal(decide(state, { busy: false, now: 1 }).type, 'wait');
   });
 
   it('reconciliación marca completed los items ya presentes en disco', () => {

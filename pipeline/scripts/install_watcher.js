@@ -3,7 +3,7 @@
  * @file install_watcher.js
  * @description Watcher en tiempo real para el pipeline de instalación PS5:
  *   - Monitoriza el progreso del stream LAN PC ➔ PS5 (bytes transferidos, %, MB/s, ETA).
- *   - Monitoriza las descargas activas en IDM (Update/DLCs).
+ *   - Monitoriza las descargas activas en aria2c (cola 1x1).
  *   - Detecta fin de transferencia y verifica registro en la consola.
  * Uso:
  *   node scripts/install_watcher.js          # Muestra estado actual
@@ -124,71 +124,21 @@ function getLiveTransfer() {
   };
 }
 
-const { execSync } = require('node:child_process');
-
-function parseHex(h) {
-  if (!h || h.trim().length < 16) return 0;
-  try {
-    const buf = Buffer.from(h.trim(), 'hex');
-    return Number(buf.readBigUInt64LE(0));
-  } catch {
-    return 0;
-  }
-}
-
-function getIdmStatus() {
+function getAriaStatus() {
   const items = [];
   try {
-    const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { encoding: 'utf8', timeout: 2000 });
-    const qM = qOut.match(/Queue\s+REG_SZ\s+(.*)$/m);
-    const queueIds = qM ? qM[1].trim().split(/\s+/).filter(Boolean) : [];
-
-    for (let i = 0; i < queueIds.length; i++) {
-      const id = queueIds[i];
-      try {
-        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id}`, { encoding: 'utf8', timeout: 1500 });
-        const fnM = out.match(/^\s+FR_FNCD\s+REG_SZ\s+(.*)$/m);
-        const fileM = out.match(/^\s+FileName\s+REG_SZ\s+(.*)$/m);
-        let name = '';
-        if (fnM && fnM[1].trim()) {
-          name = decodeURIComponent(fnM[1].trim());
-        } else if (fileM && fileM[1].trim()) {
-          let raw = decodeURIComponent(fileM[1].split('?')[0].trim());
-          const h = raw.indexOf('-');
-          if (h > 0 && h < 30) raw = raw.substring(h + 1);
-          name = raw;
-        } else {
-          name = `Descarga #${id}`;
-        }
-
-        const fsM = out.match(/^\s+FileSize\s+REG_NONE\s+(.*)$/m);
-        const dlM = out.match(/^\s+Downloaded\s+REG_NONE\s+(.*)$/m);
-        const stM = out.match(/^\s+Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-        const spM = out.match(/^\s+Speed\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-
-        const totalBytes = fsM ? parseHex(fsM[1]) : 0;
-        const downBytes = dlM ? parseHex(dlM[1]) : 0;
-        const status = stM ? parseInt(stM[1], 16) : 0;
-        const speedBytes = spM ? parseInt(spM[1], 16) : 0;
-
-        const totalGB = totalBytes > 0 ? (totalBytes / (1024 ** 3)).toFixed(2) : null;
-        const downGB = (downBytes / (1024 ** 3)).toFixed(2);
-        const pct = totalBytes > 0 ? ((downBytes / totalBytes) * 100).toFixed(1) : '0.0';
-        const speedMBs = speedBytes > 0 ? (speedBytes / (1024 * 1024)).toFixed(2) : '0';
-
-        items.push({
-          id,
-          pos: i + 1,
-          totalInQueue: queueIds.length,
-          name,
-          totalGB: totalGB ? Number(totalGB) : null,
-          downGB: Number(downGB),
-          percent: Number(pct),
-          speedMBs: Number(speedMBs),
-          status,
-          active: status === 1,
-        });
-      } catch {}
+    const qFile = path.join(cfg.state.cacheDir, 'queue_state.json');
+    const q = JSON.parse(fs.readFileSync(qFile, 'utf8'));
+    const relevant = (q.items || []).filter((it) => it.status === 'downloading' || it.status === 'pending');
+    let pos = 0;
+    for (const it of relevant) {
+      pos += 1;
+      items.push({
+        pos,
+        totalInQueue: relevant.length,
+        name: it.name,
+        active: it.status === 'downloading',
+      });
     }
   } catch {}
   return items;
@@ -196,7 +146,7 @@ function getIdmStatus() {
 
 function formatStatus() {
   const transfer = getLiveTransfer();
-  const idm = getIdmStatus();
+  const aria = getAriaStatus();
 
   const lines = [];
   lines.push('========================================================================');
@@ -215,24 +165,20 @@ function formatStatus() {
   }
 
   lines.push('------------------------------------------------------------------------');
-  if (idm.length > 0) {
-    const activeCount = idm.filter((x) => x.active).length;
-    lines.push(`📥 Cola de descargas en IDM: (${idm.length} en cola | ${activeCount} descargando)`);
-    for (const d of idm) {
+  if (aria.length > 0) {
+    const activeCount = aria.filter((x) => x.active).length;
+    lines.push(`📥 Cola de descargas aria2c: (${aria.length} en cola | ${activeCount} descargando)`);
+    for (const d of aria) {
       const icon = d.active ? '⚡' : '⏸️';
-      const totStr = d.totalGB ? ` / ${d.totalGB} GB` : '';
-      const pctStr = d.percent > 0 ? ` (${d.percent}%)` : '';
-      const spdStr = d.speedMBs > 0 ? ` | ${d.speedMBs} MB/s` : '';
       const stateStr = d.active ? 'Descargando' : 'En cola';
-      lines.push(`   ├─ ${icon} [${d.pos}/${d.totalInQueue}] ${d.name}`);
-      lines.push(`   │     Progreso: ${d.downGB} GB${totStr}${pctStr}${spdStr} — [${stateStr}]`);
+      lines.push(`   ├─ ${icon} [${d.pos}/${d.totalInQueue}] ${d.name} — [${stateStr}]`);
     }
   } else {
-    lines.push('📥 Cola de descargas en IDM: Vacía');
+    lines.push('📥 Cola de descargas aria2c: Vacía');
   }
   lines.push('========================================================================');
 
-  return { summary: lines.join('\n'), data: { transfer, idm, updatedAt: new Date().toISOString() } };
+  return { summary: lines.join('\n'), data: { transfer, aria, updatedAt: new Date().toISOString() } };
 }
 
 function main() {

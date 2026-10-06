@@ -208,6 +208,41 @@ function validatePkg(filePath) {
     const endPoint = stat.size - 65536;
     const r3 = fs.readSync(fd, testBuf, 0, 65536, endPoint);
     if (r3 !== 65536) errors.push('Fallo de lectura de sector al final del archivo.');
+    // BARRERA 8 — Muestreo anti-preasignado: el contenido PKG es cifrado/
+    // comprimido (entropía alta). Un archivo preasignado con falloc tiene
+    // huecos en ceros; si la mayoría de las muestras son ceros puros,
+    // la descarga está incompleta aunque el tamaño coincida (caso Ragnarok
+    // 84 GB: tamaño OK, cola en ceros → apagonazo en PS5 si se instala).
+    if (stat.size > 1073741824) {
+      const SAMPLES = 8;
+      const sampleBuf = Buffer.alloc(65536);
+      let zeroHits = 0;
+      for (let s = 0; s < SAMPLES; s++) {
+        const off = Math.floor((stat.size * (s + 1)) / (SAMPLES + 1));
+        try {
+          const n = fs.readSync(fd, sampleBuf, 0, 65536, off);
+          if (n === 65536 && sampleBuf.every((b) => b === 0)) zeroHits++;
+        } catch {
+          errors.push(`Fallo de muestreo en offset ${off}.`);
+          break;
+        }
+      }
+      // Cola explícita: el final de un PKG cifrado nunca son 64 KB en ceros.
+      // Cubre descargas que mueren al 99% (caso Ragnarok 84 GB: tamaño OK,
+      // interior con datos, cola sin escribir → apagonazo si se instala).
+      try {
+        const tail = Buffer.alloc(65536);
+        const n = fs.readSync(fd, tail, 0, 65536, stat.size - 65536);
+        if (n === 65536 && tail.every((b) => b === 0)) {
+          errors.push('ARCHIVO INCOMPLETO: los últimos 64 KB están en ceros (cola sin descargar).');
+        }
+      } catch {
+        errors.push('Fallo de muestreo en la cola del archivo.');
+      }
+      if (zeroHits >= 3) {
+        errors.push(`ARCHIVO PREASIGNADO/INCOMPLETO: ${zeroHits}/${SAMPLES} muestras en ceros puros (descarga sin terminar).`);
+      }
+    }
 
   } catch (err) {
     errors.push(`Excepción durante el análisis binario: ${err.message}`);

@@ -13,14 +13,14 @@ CONTRATO: Zero-human-touch, SRP < 300L por módulo, CI verde siempre, fail-close
 | **Falla 1: Error 403 inmediato en aria2c** | AkiraBox valida User-Agent + Cookie de Cloudflare del browser que generó el link. | Resolver debe exportar headers exactos (`User-Agent`, `Cookie`) y pasarlos a `aria2.addUri` / `aria2.changeUri`. |
 | **Falla 2: Pérdida de progreso al cambiar URL** | ETag o encabezado de rango no coincide entre tokens viejos y nuevos. | Forzar flag `--continue=true` (`-c`) y `--conditional-get=true`. Mantener archivo `.aria2` intacto. |
 | **Falla 3: Congelamiento de HDD mecánico (E:)** | 16 hilos escribiendo chunks pequeños sin búfer causan thrashing brutal en disco mecánico. | Configurar `--disk-cache=64M`, `--file-allocation=falloc` (o `trunc`), y cola estricta `max-concurrent-downloads=1`. |
-| **Falla 4: Loop infinito de reintentos en link roto** | El archivo fue eliminado del servidor (404/410 real) y el bot reintenta para siempre. | Límite estricto de intentos: `maxAttempts: 3` en `queue_state_ps5.json`. Si supera 3, marcar `status: "failed"` y alertar Telegram. |
+| **Falla 4: Loop infinito de reintentos en link roto** | El archivo fue eliminado del servidor (404/410 real) y el bot reintenta para siempre. | Límite estricto de intentos: `maxAttempts: 3` en `data/cache/ps5/queue_state.json`. Si supera 3, marcar `status: "failed"` y alertar Telegram. |
 
 ---
 
 ## 2. ARQUITECTURA MODULAR (SRP < 300L)
 
 ```
-queue_state_ps5.json (SSOT de la cola)
+data/cache/ps5/queue_state.json (SSOT de la cola)
           │
           ▼
 [pipeline/lib/aria_client.js] (Cliente JSON-RPC HTTP/WS contra localhost:6800)
@@ -109,9 +109,9 @@ queue_state_ps5.json (SSOT de la cola)
      - Llama a `akira_token_refresher.js`.
      - Ejecuta `changeDownloadUrl(gid, oldUrl, newUrl)`.
      - Loguea recuperación exitosa en `data/logs/aria_pilot.log`.
-  4. Si no hay descarga activa, lee siguiente ítem `status: "pending"` de `queue_state_ps5.json`.
+   4. Si no hay descarga activa, lee siguiente ítem `status: "pending"` de `data/cache/ps5/queue_state.json`.
   5. Si una descarga llega a `status: "complete"`:
-     - Marca ítem en `queue_state_ps5.json` como `completed`.
+      - Marca ítem en `data/cache/ps5/queue_state.json` como `completed`.
      - Si es `.rar` multi-volumen, invoca `archive_extractor.js`.
      - Si es `.pkg` directo, valida `\x7fCNT` y mueve a `Biblioteca_Juegos_PS`.
      - Envía notificación Telegram.
@@ -137,7 +137,7 @@ queue_state_ps5.json (SSOT de la cola)
 
 4. **Paso 4: Creación del Daemon Piloto**
    - Escribir `E:\ps5\pipeline\scripts\aria_pilot.js`.
-   - Conectar con `queue_state_ps5.json` para Tanda 2:
+   - Conectar con `data/cache/ps5/queue_state.json` para Tanda 2:
      - Marvel's Spider-Man (2018)
      - Haven
      - Miles Morales

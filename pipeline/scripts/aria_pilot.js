@@ -28,7 +28,7 @@ const ARIA_CONF = path.join(__dirname, '..', '..', 'tools', 'aria2c', 'aria2.con
 const PID_FILE = path.join(cfg.state.cacheDir, 'aria_pilot.pid');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'aria_pilot.log');
 const QUEUE_FILE = cfg.state.queueFile || path.join(cfg.state.cacheDir, 'queue_state.json');
-const STAGING_DIR = 'E:\\staging';
+const STAGING_DIR = cfg.paths.stagingDir || 'E:\\staging';
 const MAX_ATTEMPTS = 3;
 const TAG = 'ARIA_PILOT';
 
@@ -63,6 +63,14 @@ function loadQueue() {
   try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')); } catch { return { version: 1, items: [] }; }
 }
 
+const QUEUE_LOCK = `${QUEUE_FILE}.lock`; // mismo protocolo que queue_io.loadLocked
+function acquireQueueLock() {
+  try { fs.mkdirSync(QUEUE_LOCK); return true; } catch { return false; }
+}
+function releaseQueueLock() {
+  try { fs.rmdirSync(QUEUE_LOCK); } catch {}
+}
+
 function saveQueue(state) {
   state.updatedAt = new Date().toISOString();
   const tmp = `${QUEUE_FILE}.tmp.${Date.now()}`;
@@ -79,7 +87,7 @@ function getFilenameFromUrl(url) {
     let cand = parts.pop();
     if (cand === 'file' && parts.length > 0) cand = parts.pop();
     if (cand) {
-      cand = decodeURIComponent(cand).replace(/^[a-zA-Z0-9_-]{15,30}-/, '');
+      cand = decodeURIComponent(cand).replace(/^[a-zA-Z0-9]{15,35}-(?=\[)/, '');
       if (cand.includes('.')) return cand;
     }
   } catch {}
@@ -94,6 +102,25 @@ function getFilenameFromUrl(url) {
  */
 function processCompletedFile(filePath) {
   if (!fs.existsSync(filePath)) return 'failed';
+  try {
+    const sz = fs.statSync(filePath).size;
+    if (sz < 1048576) {
+      let isPkg = false;
+      try {
+        const fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(4);
+        fs.readSync(fd, buf, 0, 4, 0);
+        fs.closeSync(fd);
+        if (buf.toString('hex') === '7f434e54') isPkg = true;
+      } catch {}
+      if (!isPkg) {
+        logPs5(TAG, `☠️ Archivo veneno (${sz} bytes), eliminado: ${path.basename(filePath)}`, LOG_FILE);
+        try { fs.unlinkSync(filePath); } catch {}
+        try { fs.unlinkSync(`${filePath}.aria2`); } catch {}
+        return 'poison';
+      }
+    }
+  } catch { return 'failed'; }
   const ext = path.extname(filePath).toLowerCase();
 
   if (ext === '.rar' || ext === '.zip') {
@@ -110,7 +137,7 @@ function processCompletedFile(filePath) {
       }
       return allOk ? 'completed' : 'failed';
     }
-    if (extractRes.error && extractRes.error.includes('Volúmenes incompletos')) {
+    if (extractRes.error && (extractRes.error.includes('Volúmenes incompletos') || extractRes.error.includes('no es el volumen part1') || extractRes.error.includes('part1 ausente'))) {
       logPs5(TAG, `⏳ Volumen descargado en disco. Esperando partes restantes para descomprimir.`, LOG_FILE);
       return 'deferred';
     }
@@ -126,17 +153,37 @@ function processCompletedFile(filePath) {
       return 'failed';
     }
     const targetDir = getBestTargetLibrary(filePath, LOG_FILE);
-    const finalPath = moveFileToGameFolder(filePath, targetDir, LOG_FILE);
-    logPs5(TAG, `🎉 JUEGO ORGANIZADO Y LISTO: ${path.basename(finalPath || filePath)} ➔ ${targetDir}`, LOG_FILE);
+    const moveRes = moveFileToGameFolder(filePath, targetDir, LOG_FILE);
+    if (!moveRes.success) {
+      logPs5(TAG, `❌ No se pudo organizar: ${moveRes.error || filePath}`, LOG_FILE);
+      return 'failed';
+    }
+    const finalPath = moveRes.destPath || filePath;
+    logPs5(TAG, `🎉 JUEGO ORGANIZADO Y LISTO: ${path.basename(finalPath)} ➔ ${targetDir}`, LOG_FILE);
     return 'completed';
   }
   return 'failed';
 }
 
-/**
- * Ciclo central del piloto autónomo.
- */
 async function cycle() {
+  if (!(await ensureAriaRunning())) return;
+  // Lock compartido con queue_io: si otra herramienta edita la cola, este
+  // ciclo se salta (no pisa ediciones externas). loadLocked espera/reintenta.
+  if (!acquireQueueLock()) {
+    logPs5(TAG, 'Cola bloqueada por otra herramienta, ciclo saltado.', LOG_FILE);
+    return;
+  }
+  try {
+    await cycleLocked();
+  } finally {
+    releaseQueueLock();
+  }
+}
+
+/**
+ * Ciclo central del piloto autónomo (con lock de cola adquirido).
+ */
+async function cycleLocked() {
   if (!(await ensureAriaRunning())) return;
 
   const queue = loadQueue();
@@ -173,7 +220,21 @@ async function cycle() {
   // 3. Si terminó o falló la descarga activa previa
   if (activeGid) {
     const statusRes = await downloadEngine.tellStatus(activeGid);
-    if (statusRes.ok && statusRes.status) {
+    if (!(statusRes.ok && statusRes.status)) {
+      // aria2c se reinició o purgó el GID: no quedarse atascado, reencolar.
+      const stuck = queue.items.find((i) => i.gid === activeGid);
+      if (stuck) {
+        stuck.attempts = (stuck.attempts || 0) + 1;
+        stuck.status = stuck.attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
+        stuck.error = `GID ${activeGid} desconocido en aria2c (reinicio?). Reencolado.`;
+        delete stuck.gid;
+        saveQueue(queue);
+        logPs5(TAG, `🔄 ${stuck.name}: ${stuck.error}`, LOG_FILE);
+      }
+      activeGid = null;
+      return;
+    }
+    {
       const s = statusRes.status;
       const item = queue.items.find((i) => i.status === 'downloading' || i.gid === activeGid);
 
@@ -190,6 +251,10 @@ async function cycle() {
             item.status = 'completed';
             item.completedAt = new Date().toISOString();
             logPs5(TAG, `✅ Ítem completado e instalado en biblioteca: ${item.name}`, LOG_FILE);
+            try {
+              const { sendTelegramMessage } = require('../lib/telegram.js');
+              sendTelegramMessage(`✅ *Descarga lista:* ${item.name}`).catch(() => {});
+            } catch {}
 
             const multi = inspectMultiPart(path.basename(filePath));
             if (multi.isMultiPart && multi.basePattern) {
@@ -205,9 +270,23 @@ async function cycle() {
             item.status = 'downloaded';
             item.note = 'Volumen en disco; esperando partes restantes';
             logPs5(TAG, `📦 Volumen preservado en disco: ${item.name}`, LOG_FILE);
+          } else if (result === 'poison') {
+            item.status = 'failed';
+            item.error = 'Enlace expirado (servidor devolvió página de error en vez del archivo). Re-mintar en Brave.';
+            delete item.gid;
+            logPs5(TAG, `☠️ ${item.name}: enlace expirado, esperando URL fresca`, LOG_FILE);
+            try {
+              const { sendTelegramMessage } = require('../lib/telegram.js');
+              sendTelegramMessage(`🔗 *Link expirado:* ${item.name}\nRe-míntalo en Brave y pégalo aquí para reanudar.`).catch(() => {});
+            } catch {}
           } else {
             item.status = 'failed';
             item.error = 'Error en validación o extracción de archivo';
+            logPs5(TAG, `❌ Ítem fallido: ${item.name} (${item.error})`, LOG_FILE);
+            try {
+              const { sendTelegramMessage } = require('../lib/telegram.js');
+              sendTelegramMessage(`❌ *Falló:* ${item.name}`).catch(() => {});
+            } catch {}
           }
           saveQueue(queue);
         }
@@ -217,6 +296,16 @@ async function cycle() {
           item.attempts = (item.attempts || 0) + 1;
           item.status = item.attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
           item.error = s.errorMessage;
+          const expM = String(item.url || '').match(/[?&](access|expiration)=(\d+)/);
+          if (expM) {
+            let ts = Number(expM[2]);
+            if (expM[1] === 'expiration' || ts < 1e12) ts *= 1000;
+            if (Date.now() > ts) {
+              item.status = 'failed';
+              item.error = `Enlace firmado expirado (${new Date(ts).toISOString()}). Regenerar desde dlpsgame. ${s.errorMessage || ''}`.trim();
+              logPs5(TAG, `❌ ${item.name}: ${item.error}`, LOG_FILE);
+            }
+          }
           delete item.gid;
           saveQueue(queue);
         }
@@ -229,6 +318,12 @@ async function cycle() {
   // 4. Buscar siguiente ítem pendiente
   const nextItem = queue.items.find((i) => i.status === 'pending');
   if (!nextItem) return;
+
+  // Guardia: sin URL http real (marcas como 're-mint'/'akirabox-minted')
+  // no se intenta resolver: esperan link fresco humano, no queman intentos.
+  if (!/^https?:\/\//i.test(nextItem.url || '')) {
+    return;
+  }
 
   // Resolver URL directa si es página web
   logPs5(TAG, `🔍 Verificando URL para: ${nextItem.name}...`, LOG_FILE);
@@ -263,6 +358,24 @@ async function cycle() {
 }
 
 async function main() {
+  const SPRINT_LOCK = path.join(cfg.state.cacheDir, 'sprint.lock');
+  if (fs.existsSync(SPRINT_LOCK)) {
+    // Lock stale (sprint muerto sin limpiar) => liberarlo, no bloquear para siempre.
+    let stale = true;
+    try {
+      const lock = JSON.parse(fs.readFileSync(SPRINT_LOCK, 'utf8'));
+      if (lock && lock.pid) {
+        try { process.kill(lock.pid, 0); stale = false; } catch { stale = true; }
+      }
+    } catch { stale = true; }
+    if (stale) {
+      try { fs.unlinkSync(SPRINT_LOCK); } catch {}
+      logPs5(TAG, 'sprint.lock stale liberado (sprint muerto). Pilot continúa.', LOG_FILE);
+    } else {
+      logPs5(TAG, 'Sprint manual activo (sprint.lock). Pilot en espera, saliendo sin interferir.', LOG_FILE);
+      process.exit(0);
+    }
+  }
   if (!acquirePid(PID_FILE)) {
     logPs5(TAG, 'Otro proceso aria_pilot ya está activo. Saliendo.', LOG_FILE);
     process.exit(0);

@@ -1,8 +1,8 @@
 /**
  * @file queue_state.js
  * @description Máquina de estados de la cola de descargas del pipeline PS5.
- *   Corrige el bug de desincronización del sequencer viejo (estado en RAM que
- *   nunca reflejaba lo que IDM estaba descargando → descargas duplicadas).
+ *   Corrige el bug de desincronización del downloader viejo (estado en RAM que
+ *   nunca reflejaba lo que aria2c estaba descargando → descargas duplicadas).
  *   Decisiones puras (decide/reconcile) + IO atómico (load/save); el emparejamiento
  *   nombre↔artefacto vive en artifact_match.js (tags + acentos).
  * SRP < 300L.
@@ -102,16 +102,16 @@ function findNextPending(state, now) {
 /**
  * Decide la siguiente acción del ciclo.
  * @param {QueueState} state
- * @param {{ idmBusy: boolean, now: number }} opts
+ * @param {{ busy: boolean, now: number }} opts
  * @returns {{ type: 'wait'|'inject'|'complete'|'none', index?: number, reason?: string }}
  */
 function decide(state, opts) {
   const active = findActive(state);
   if (active >= 0) {
-    if (opts.idmBusy) return { type: 'wait', reason: 'IDM descargando (inyección en curso)', index: active };
+    if (opts.busy) return { type: 'wait', reason: 'aria2c descargando (inyección en curso)', index: active };
     return { type: 'complete', index: active };
   }
-  if (opts.idmBusy) return { type: 'wait', reason: 'IDM ocupado (descarga externa al pipeline)' };
+  if (opts.busy) return { type: 'wait', reason: 'aria2c ocupado (descarga externa al pipeline)' };
   const next = findNextPending(state, opts.now);
   if (next >= 0) return { type: 'inject', index: next };
   if (state.items.some((item) => item.status === STATUS.PENDING)) {
@@ -125,7 +125,7 @@ function decide(state, opts) {
  * @param {number} index
  * @param {string} [note]
  */
-function markInjected(state, index, note = 'inyectado a IDM') {
+function markInjected(state, index, note = 'inyectado a aria2c') {
   const item = state.items[index];
   item.status = STATUS.INJECTED;
   item.note = note;
@@ -185,11 +185,12 @@ function summarize(state) {
   const count = (status) => state.items.filter((item) => item.status === status).length;
   const next =
     state.items.find((item) => item.status === STATUS.INJECTED) ||
+    state.items.find((item) => item.status === 'downloading') ||
     state.items.find((item) => item.status === STATUS.PENDING);
   return {
     total: state.items.length,
     pending: count(STATUS.PENDING),
-    injected: count(STATUS.INJECTED),
+    injected: count(STATUS.INJECTED) + state.items.filter((item) => item.status === 'downloading').length,
     completed: count(STATUS.COMPLETED),
     failed: count(STATUS.FAILED),
     skipped: count(STATUS.SKIPPED),

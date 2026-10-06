@@ -66,6 +66,17 @@ if (Test-PidAlive $wdPid) {
   Write-Log ("Watchdog jailbreak: {0}" -f $(if ($alive) { 'levantado OK' } else { 'FALLO al levantar (revisar kstuff_watchdog.log)' }))
 }
 
+# 2b) Piloto de descargas aria2c (era post-IDM, 5-oct-2026)
+$ariaPid = Join-Path $root 'data\cache\ps5\aria_pilot.pid'
+if (Test-PidAlive $ariaPid) {
+  Write-Log 'Piloto aria2c: ya activo, no se duplica.'
+} else {
+  Start-HiddenNode (Join-Path $root 'pipeline\scripts\aria_pilot.js')
+  Start-Sleep -Seconds 3
+  $alive = Test-PidAlive $ariaPid
+  Write-Log ("Piloto aria2c: {0}" -f $(if ($alive) { 'levantado OK' } else { 'FALLO al levantar (revisar aria_pilot.log)' }))
+}
+
 # 3) Host del exploit (DNS+HTTPS 100% local: manuals.playstation.net -> 192.168.2.1)
 #    Sin el, la app WebKit Autoloader no carga pagina tras un reinicio de la PS5.
 $hostProc = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'webkit-autoloader-host' }

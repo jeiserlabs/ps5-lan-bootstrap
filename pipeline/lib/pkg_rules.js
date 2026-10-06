@@ -11,6 +11,7 @@ const TITLE_ID_RE = /[A-Za-z]{4}\d{5}/;
 const RE_UPDATE = /(^|[^a-z])(update|upd)([^a-z]|$)|_patch|patch_|updatev|_a0*[1-9]\d*-|-a0*[1-9]\d*-/;
 const RE_DLC = /-a0000-|(^|[^a-z])(dlc(s)?|addon|seasonpass|season-pass|season pass|unlock|deluxe|valhalla|bonus|expansion)([^a-z]|$)/;
 const RE_FIX = /(^|[^a-z])fix([^a-z]|$)|_fix|fix_|optionalfix/;
+const RE_MOD_BLOCK = /(^|[^a-z])mod([^a-z]|$)|unlock[_ .-]?all|all[_ .-]?unlock/;
 const RE_FULLGAME = /fullgame|full\.game/;
 const RE_VERSION = /v(\d+)\.(\d+)/;
 
@@ -18,10 +19,10 @@ const RE_VERSION = /v(\d+)\.(\d+)/;
  * @param {string} filename
  * @returns {string} Title ID (CUSA/PPSA/...) o UNKNOWN_<hash corto>
  */
-function getTitleId(filename) {
-  const match = filename.match(TITLE_ID_RE);
+function getTitleId(filenameOrPath) {
+  const match = (filenameOrPath || '').match(TITLE_ID_RE);
   if (match) return match[0].toUpperCase();
-  const compact = filename.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const compact = path.basename(filenameOrPath || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   return `UNKNOWN_${compact.slice(0, 8) || 'EMPTY'}`;
 }
 
@@ -55,7 +56,7 @@ function classifyPkg(filename) {
 function groupByTitle(pkgPaths) {
   const groups = new Map();
   for (const pkgPath of pkgPaths) {
-    const id = getTitleId(path.basename(pkgPath));
+    const id = getTitleId(pkgPath);
     if (!groups.has(id)) groups.set(id, []);
     groups.get(id).push(pkgPath);
   }
@@ -75,7 +76,19 @@ function groupByTitle(pkgPaths) {
 function planInstallOrder(pkgPaths, installedBasenames) {
   const installed = (installedBasenames || []).map((b) => b.toLowerCase());
   const installedKeys = new Set((installedBasenames || []).map((b) => `${getTitleId(b)}::${classifyPkg(b)}`));
-  const isInstalled = (pkgPath) => installed.includes(path.basename(pkgPath).toLowerCase());
+  // SSOT anti-duplicados: coincidencia exacta por nombre O, para BASE/FIX
+  // (uno por Title ID), por Title ID + categoría. Así un FULLGAME con otro
+  // nombre no reinstala una base ya instalada. UPDATE/DLC siguen por nombre
+  // exacto para no saltarse updates o DLCs genuinamente nuevos del mismo título.
+  const isInstalled = (pkgPath) => {
+    if (installed.includes(path.basename(pkgPath).toLowerCase())) return true;
+    const cat = classifyPkg(path.basename(pkgPath));
+    if (cat === 'BASE' || cat === 'FIX') {
+      const id = getTitleId(pkgPath);
+      return installedKeys.has(`${id}::BASE`) || installedKeys.has(`${id}::FIX`);
+    }
+    return false;
+  };
 
   const unique = [];
   const seen = new Set();
@@ -92,11 +105,16 @@ function planInstallOrder(pkgPaths, installedBasenames) {
 
   for (const id of [...groups.keys()].sort()) {
     const files = /** @type {string[]} */ (groups.get(id)).slice().sort();
+    // IDs UNKNOWN: sin Title ID no hay cascada que esperar — se planifican tal cual.
+    if (id.startsWith('UNKNOWN_')) {
+      plan.push(...files);
+      continue;
+    }
     /** @type {Record<string, string[]>} */
     const byCategory = { BASE: [], UPDATE: [], DLC: [], FIX: [] };
     for (const file of files) byCategory[classifyPkg(path.basename(file))].push(file);
 
-    const baseInDb = id.startsWith('UNKNOWN') || installedKeys.has(`${id}::BASE`) || installedKeys.has(`${id}::FIX`);
+    const baseInDb = installedKeys.has(`${id}::BASE`) || installedKeys.has(`${id}::FIX`);
     const holdUpdatesAndDlcs = (reason) => {
       for (const file of byCategory.UPDATE) held.push({ file, reason });
       for (const file of byCategory.DLC) held.push({ file, reason });
@@ -127,4 +145,16 @@ function planInstallOrder(pkgPaths, installedBasenames) {
   return { plan, held };
 }
 
-module.exports = { classifyPkg, getTitleId, planInstallOrder };
+module.exports = { classifyPkg, getTitleId, planInstallOrder, isModBlocked };
+
+/**
+ * Detecta mods de contenido (Unlock-All y similares) que son
+ * estructuralmente válidos pero panican el kernel en PS5 con kstuff.
+ * Estos NUNCA entran al pipeline de instalación: van a cuarentena.
+ * No confunde 'deluxe'/'model' (límites de palabra).
+ * @param {string} filename
+ * @returns {boolean}
+ */
+function isModBlocked(filename) {
+  return RE_MOD_BLOCK.test((filename || '').toLowerCase());
+}

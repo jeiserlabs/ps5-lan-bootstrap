@@ -13,29 +13,39 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { getPs5Config } = require('../lib/config.js');
 const pkgRules = require('../lib/pkg_rules.js');
-const { validatePkg } = require('../lib/pkg_validator.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
+const { installPkg } = require('./lan_installer.js');
 
 const cfg = getPs5Config();
-const INSTALLED_FILE = path.join(cfg.state.cacheDir, 'installed_pkgs.json');
-const ROOT_INSTALLED_FILE = path.resolve(__dirname, '..', '..', 'installed_pkgs_ps5.json');
+const INSTALLED_FILE = cfg.state.installedFile || path.join(cfg.state.cacheDir, 'installed_pkgs.json');
 const PID_FILE = path.join(cfg.state.cacheDir, 'daemon.pid');
 const TAG = 'DAEMON';
 const ARCHIVE_EXT = new Set(['.rar', '.zip']);
 let tgSend = null;
-try { tgSend = require('../../lib/integrations/telegram.js').sendTelegramMessage; } catch {}
+try { tgSend = require('../lib/telegram.js').sendTelegramMessage; } catch {}
 function notifyTg(text) { if (tgSend) tgSend(text).catch(() => {}); }
 
 function loadInstalled() {
-  const fileToRead = fs.existsSync(INSTALLED_FILE) ? INSTALLED_FILE : (fs.existsSync(ROOT_INSTALLED_FILE) ? ROOT_INSTALLED_FILE : null);
-  if (!fileToRead) return [];
+  // SSOT único: data/cache/ps5/installed_pkgs.json. El legacy de raíz solo se lee
+  // una vez para migrar (nunca se escribe).
+  if (!fs.existsSync(INSTALLED_FILE)) {
+    const legacy = path.resolve(__dirname, '..', '..', 'installed_pkgs_ps5.json');
+    if (fs.existsSync(legacy)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(legacy, 'utf8'));
+        if (Array.isArray(parsed)) {
+          fs.mkdirSync(path.dirname(INSTALLED_FILE), { recursive: true });
+          fs.writeFileSync(INSTALLED_FILE, `${JSON.stringify(parsed, null, 2)}\n`);
+        }
+      } catch {}
+    }
+  }
   try {
-    const parsed = JSON.parse(fs.readFileSync(fileToRead, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(INSTALLED_FILE, 'utf8'));
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -45,9 +55,6 @@ function loadInstalled() {
 function saveInstalled(installed) {
   fs.mkdirSync(path.dirname(INSTALLED_FILE), { recursive: true });
   fs.writeFileSync(INSTALLED_FILE, `${JSON.stringify(installed, null, 2)}\n`);
-  try {
-    fs.writeFileSync(ROOT_INSTALLED_FILE, `${JSON.stringify(installed, null, 2)}\n`);
-  } catch {}
 }
 
 function findArchiveTool() {
@@ -112,9 +119,22 @@ function listPkgs() {
 
 function processPendingArchives() {
   if (!fs.existsSync(cfg.paths.watchDir)) return;
+  const quarantine = path.join(cfg.paths.stagingDir, '_quarantine');
   for (const file of fs.readdirSync(cfg.paths.watchDir)) {
     if (!ARCHIVE_EXT.has(path.extname(file).toLowerCase())) continue;
     const fullPath = path.join(cfg.paths.watchDir, file);
+    // Guarda anti-mod: contenido tocado (Unlock-All) a cuarentena, jamás a la consola.
+    if (pkgRules.isModBlocked(file)) {
+      try {
+        fs.mkdirSync(quarantine, { recursive: true });
+        fs.renameSync(fullPath, path.join(quarantine, file));
+        logPs5(TAG, `🚫 MOD bloqueado y en cuarentena: ${file}`, cfg.state.logFile);
+        notifyTg(`🚫 <b>MOD bloqueado:</b> <code>${file}</code> va a cuarentena, no a la consola.`);
+      } catch (err) {
+        logPs5(TAG, `No se pudo cuarentenar ${file}: ${err.message}`, cfg.state.logFile);
+      }
+      continue;
+    }
     let stat;
     try {
       stat = fs.statSync(fullPath);
@@ -151,8 +171,21 @@ function processPendingArchives() {
  */
 function processLoosePkgs() {
   if (!fs.existsSync(cfg.paths.watchDir)) return;
+  const quarantine = path.join(cfg.paths.stagingDir, '_quarantine');
   for (const file of fs.readdirSync(cfg.paths.watchDir)) {
     if (path.extname(file).toLowerCase() !== '.pkg') continue;
+    // Guarda anti-mod también para PKGs sueltos.
+    if (pkgRules.isModBlocked(file)) {
+      try {
+        fs.mkdirSync(quarantine, { recursive: true });
+        fs.renameSync(path.join(cfg.paths.watchDir, file), path.join(quarantine, file));
+        logPs5(TAG, `🚫 MOD bloqueado y en cuarentena: ${file}`, cfg.state.logFile);
+        notifyTg(`🚫 <b>MOD bloqueado:</b> <code>${file}</code> va a cuarentena, no a la consola.`);
+      } catch (err) {
+        logPs5(TAG, `No se pudo cuarentenar ${file}: ${err.message}`, cfg.state.logFile);
+      }
+      continue;
+    }
     const fullPath = path.join(cfg.paths.watchDir, file);
     try {
       const stat = fs.statSync(fullPath);
@@ -167,81 +200,14 @@ function processLoosePkgs() {
   }
 }
 
-/**
- * @param {string} url
- * @param {number} [timeoutMs]
- * @returns {Promise<{ status: number, body: string } | null>}
- */
-function httpGet(url, timeoutMs = 4000) {
-  return new Promise((resolve) => {
-    const req = http.get(url, (res) => {
-      let body = '';
-      res.on('data', (chunk) => {
-        body += chunk;
-      });
-      res.on('end', () => resolve({ status: res.statusCode || 0, body }));
-    });
-    req.setTimeout(timeoutMs, () => {
-      req.destroy();
-      resolve(null);
-    });
-    req.on('error', () => resolve(null));
-  });
-}
-
 async function installPass() {
   const installed = loadInstalled();
   const plan = pkgRules.planInstallOrder(listPkgs(), installed);
   if (plan.plan.length === 0) return;
 
-  const server = await httpGet(`http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/healthz`, 2500);
-  if (!server) {
-    logPs5(TAG, 'Servidor LAN 9898 no responde. Arranca: npm run ps5:server', cfg.state.logFile);
-    return;
-  }
-  const status = await httpGet(`http://${cfg.ps5.ip}:${cfg.ps5.installPort}/api/status`, 3000);
-  let ps5State = null;
-  if (status) {
-    try {
-      ps5State = JSON.parse(status.body);
-    } catch {
-      ps5State = null;
-    }
-  }
-  if (!ps5State) {
-    logPs5(TAG, 'PS5 no responde en 12800 (¿jailbreak caído?). Ciclo saltado.', cfg.state.logFile);
-    return;
-  }
-  if (ps5State.busy || ps5State.pull) {
-    logPs5(TAG, 'PS5 ocupada instalando otro paquete. Ciclo saltado.', cfg.state.logFile);
-    return;
-  }
+  const pkgToInstall = plan.plan[0];
+  await installPkg(pkgToInstall);
 
-  for (const pkgPath of plan.plan) {
-    const name = path.basename(pkgPath);
-    const validation = validatePkg(pkgPath);
-    if (!validation.valid) {
-      logPs5(TAG, `❌ AUDITORÍA RECHAZÓ ${name}: ${validation.errors.join(' | ')}. Bloqueado para proteger la consola.`, cfg.state.logFile);
-      continue;
-    }
-    const category = validation.info.category || pkgRules.classifyPkg(name);
-    const fileUrl = `http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/pkg/${encodeURIComponent(name)}`;
-    const installUrl = `http://${cfg.ps5.ip}:${cfg.ps5.installPort}/install?url=${encodeURIComponent(fileUrl)}&name=${encodeURIComponent(name)}`;
-    logPs5(TAG, `Enviando a PS5: ${name} (${category})`, cfg.state.logFile);
-    const res = await httpGet(installUrl, 10000);
-    const body = res ? res.body : '';
-    if (res && body.toLowerCase().includes('ok')) {
-      installed.push(name);
-      saveInstalled(installed);
-      logPs5(TAG, `Aceptado por la PS5: ${name}`, cfg.state.logFile);
-      notifyTg(`🚀 <b>Enviando a PS5:</b>\n• <code>${name}</code> (${category})\n• Transfiriendo por cable LAN a ~70 MB/s.`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      break; // 1x1: un paquete por ciclo; la PS5 marca busy mientras transfiere e instala
-    } else {
-      logPs5(TAG, `PS5 rechazó ${name} (respuesta: ${body || 'sin respuesta'}). Se reintenta en el próximo ciclo.`, cfg.state.logFile);
-      break;
-    }
-  }
   if (plan.held.length > 0) {
     logPs5(TAG, `Retenidos por cascada: ${plan.held.length} PKG(s) (esperan base o son redundantes)`, cfg.state.logFile);
   }

@@ -143,7 +143,7 @@ function getDiskFreeGb(drive) {
 
 /**
  * Determina inteligentemente el mejor destino para balancear carga entre discos.
- * Mantiene amortiguador de seguridad en E: (mínimo 160 GB) para IDM y descompresión.
+ * Mantiene amortiguador de seguridad en E: (mínimo 160 GB) para staging y descompresión.
  * Si C: tiene más espacio libre, balancea hacia C:\Biblioteca_Juegos_PS.
  * @param {string} sourcePath Ruta origen del archivo
  * @param {string} [logFile]

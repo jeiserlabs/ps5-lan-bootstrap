@@ -1,7 +1,8 @@
 # PS5 PIPELINE (CAVEMAN ULTRA)
 
-Pipeline PC→PS5: descargar (IDM) → extraer → servir por LAN → instalar en consola jailbroken.
+Pipeline PC→PS5: descargar (aria2c) → extraer → servir por LAN → instalar en consola jailbroken.
 Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
+Motor de descargas: **aria2c headless** (`tools/aria2c/`) orquestado por `aria_pilot.js` (IDM eliminado el 5-oct-2026).
 
 ## Comandos
 
@@ -14,24 +15,25 @@ Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
 | Watchdog barrido único | `node pipeline/scripts/kstuff_watchdog.js --once` |
 | Watchdog estado | `node pipeline/scripts/kstuff_watchdog.js --status` |
 | Autostart PC (manual) | `powershell -NoProfile -ExecutionPolicy Bypass -File pipeline/scripts/ps5_pc_autostart.ps1` |
-| Sequencer de descargas (loop) | `npm run ps5:sequencer` |
+| Piloto de descargas aria2c (loop) | `npm run ps5:aria-pilot` |
+| Salud de enlaces firmados | `npm run ps5:links` |
 | Daemon extraer + instalar (loop) | `npm run ps5:daemon` |
 | Servidor LAN de PKGs | `npm run ps5:server` |
 | Enviar ELF a la consola (elfldr) | `npm run ps5:send-elf -- <ruta.elf>` |
-| Estado de la cola y salir | `node pipeline/scripts/sequencer.js --status` |
+| Estado de la cola y salir | `node pipeline/scripts/aria_pilot.js --once` |
 | Plan de instalación y salir | `node pipeline/scripts/daemon.js --status` |
 
 ## Arquitectura
 
 | Pieza | Archivo | Función |
 |---|---|---|
-| Reglas de PKG | `lib/ps5/pkg_rules.js` | classifyPkg (BASE/UPDATE/DLC/FIX) + cascada por Title ID |
-| Cola | `lib/ps5/queue_state.js` | estados (pending→injected→completed), backoff, reconciliación con disco |
-| Config | `lib/ps5/config.js` | rutas/IPs/puertos SSOT + env `PS5_*` + `data/cache/ps5/config.json` |
-| Sequencer | `scripts/ps5/sequencer.js` | resuelve enlace AkiraBox (Playwright CDP/Brave) → IDM, 1x1 |
-| Daemon | `scripts/ps5/daemon.js` | extrae .rar/.zip, clasifica, instala en cascada por 12800 |
-| Servidor | `scripts/ps5/server.js` | `http://PC:9898/pkg/<archivo>` con Range + `/healthz` |
-| Sender ELF | `scripts/ps5/send_elf.js` | payloads a elfldr (TCP 9021) |
+| Reglas de PKG | `pipeline/lib/pkg_rules.js` | classifyPkg (BASE/UPDATE/DLC/FIX) + cascada por Title ID |
+| Cola | `pipeline/lib/queue_state.js` | estados (pending→injected→completed), backoff, reconciliación con disco |
+| Config | `pipeline/lib/config.js` | rutas/IPs/puertos SSOT + env `PS5_*` + `data/cache/ps5/config.json` |
+| Piloto | `pipeline/scripts/aria_pilot.js` | orquesta cola 1x1 en aria2c (:6800), crash-recovery, extracción y validación |
+| Daemon | `pipeline/scripts/daemon.js` | extrae .rar/.zip, clasifica, instala en cascada por 12800 |
+| Servidor | `pipeline/scripts/server.js` | `http://PC:9898/pkg/<archivo>` con Range + `/healthz` |
+| Sender ELF | `pipeline/scripts/send_elf.js` | payloads a elfldr (TCP 9021) |
 
 Estado en disco (local, gitignored): `data/cache/ps5/` → `queue_state.json`, `installed_pkgs.json`, pidfiles.
 Log: `data/logs/ps5_pipeline.log`.
@@ -94,11 +96,15 @@ Snapshot read-only de la consola: `npm run ps5:backup` → `data/backups/console
 ## Reglas de oro
 
 1. **Cascada anti-brick:** BASE → UPDATE → DLC. Nunca update/DLC sin base instalada (Regla del daemon).
-2. **1x1:** una descarga IDM a la vez (el sequencer no interfiere si IDM está ocupado con algo ajeno).
+2. **1x1:** una descarga aria2c a la vez (`max-concurrent-downloads=1` en `tools/aria2c/aria2.conf`).
 3. **Extracción verificada:** sin PKG nuevo en biblioteca no se borra el comprimido; fallo → `.failed`.
 4. **Instalación condicionada:** daemon solo envía si PS5 responde y está `busy:false` (evita el falso timeout FIFO del pkg-receiver).
 5. **Almacenamiento:** extracciones nuevas a `C:\Biblioteca_Juegos_PS` (E:\ se mantiene como espejo histórico).
 6. **Pidfiles:** jamás dos daemons iguales (causa histórica de doble descarga/doble instalación).
+7. **Higiene de consola:** verificar huérfanos (`audit_orphans_ps5.py`) tras cada
+   instalación/borrado y periódicamente; borrar por FTP **solo** residuos
+   verificados (nuestros: `/user/download/*`, parches retirados). Stubs de
+   sistema (0 bytes) y `/user/temp` no se tocan. Verificar antes y después.
 
 ## Consola: exploit y boot
 
@@ -113,5 +119,5 @@ Snapshot read-only de la consola: `npm run ps5:backup` → `data/backups/console
 ## Histórico / deuda declarada
 
 - Los scripts viejos viven aún en el scratch de Antigravity (`C:\Users\dev\.gemini\antigravity\brain\...\scratch`), con versiones duplicadas (`master_lan_queue v1/v2/v3`, `idm_akira_loop*`). No se borraron: quedan como referencia hasta que la migración lleve semanas en verde.
-- Bug corregido: estado del sequencer desincronizado de IDM → descarga duplicada (reconciliación + `activeInjection` persistida antes de inyectar).
+- Bug corregido: estado del downloader desincronizado de aria2c → descarga duplicada (reconciliación + GID persistido antes de descargar).
 - Bug corregido: clasificación `FullGame`/`UNLOCK` tratados como UPDATE/BASE equivocados.

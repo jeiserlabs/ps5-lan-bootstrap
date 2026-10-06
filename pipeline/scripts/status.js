@@ -2,7 +2,7 @@
 /**
  * @file status.js
  * @description Estado unificado del pipeline PS5 en un solo comando: consola (elfldr +
- *   pkg-receiver), IDM, cola de descargas, daemons vivos y biblioteca de PKGs.
+ *   pkg-receiver), aria2c, cola de descargas, daemons vivos y biblioteca de PKGs.
  *   Reemplaza a los ~140 scripts sueltos del scratch de Antigravity.
  * Uso: node scripts/ps5/status.js [--json]
  * SRP < 300L.
@@ -80,30 +80,24 @@ function walkFiles(dir, ext, depth, out) {
   }
 }
 
-function idmState() {
-  const root = cfg.paths.idmDataDir;
-  if (!fs.existsSync(root)) return { active: false, dirs: [] };
-  const dirs = [];
-  let active = false;
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dirPath = path.join(root, entry.name);
-    let maxMtime = 0;
-    let bytes = 0;
-    for (const file of fs.readdirSync(dirPath)) {
-      if (file.endsWith('.log')) continue;
-      try {
-        const stat = fs.statSync(path.join(dirPath, file));
-        maxMtime = Math.max(maxMtime, stat.mtimeMs);
-        bytes += stat.size;
-      } catch {
-        // archivo rotado
-      }
+function ariaState() {
+  const queueFile = path.join(cfg.state.cacheDir, 'queue_state.json');
+  let downloading = null;
+  let pending = 0;
+  try {
+    const q = JSON.parse(fs.readFileSync(queueFile, 'utf8'));
+    for (const it of q.items || []) {
+      if (it.status === 'downloading') downloading = it.name;
+      if (it.status === 'pending') pending += 1;
     }
-    if (Date.now() - maxMtime < cfg.queue.idmActiveWindowMs) active = true;
-    dirs.push({ name: entry.name, bytes, lastMs: maxMtime });
-  }
-  return { active, dirs };
+  } catch {}
+  let stagingBytes = 0;
+  try {
+    for (const f of fs.readdirSync(cfg.paths.stagingDir)) {
+      try { stagingBytes += fs.statSync(path.join(cfg.paths.stagingDir, f)).size; } catch {}
+    }
+  } catch {}
+  return { active: Boolean(downloading), downloading, pending, stagingBytes };
 }
 
 async function collect() {
@@ -119,7 +113,7 @@ async function collect() {
   }
   const serverRes = await httpGet(`http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/healthz`, 2500);
 
-  const idm = idmState();
+  const aria = ariaState();
   const archives = [];
   walkFiles(cfg.paths.watchDir, new Set(['.rar', '.zip']), 1, archives);
   const failed = archives.filter((f) => f.endsWith('.failed'));
@@ -136,7 +130,7 @@ async function collect() {
   }
 
   const daemons = {
-    sequencer: readAlivePid(path.join(cfg.state.cacheDir, 'sequencer.pid')),
+    aria_pilot: readAlivePid(path.join(cfg.state.cacheDir, 'aria_pilot.pid')),
     daemon: readAlivePid(path.join(cfg.state.cacheDir, 'daemon.pid')),
     server: readAlivePid(path.join(cfg.state.cacheDir, 'server.pid')),
   };
@@ -148,7 +142,7 @@ async function collect() {
       install: install ? { busy: install.busy, active: install.active, pull: install.pull, pullName: install.pullName || '' } : null,
       serverLan: Boolean(serverRes),
     },
-    idm,
+    aria,
     archives: { pending: archives.length - failed.length, failed: failed.length },
     library: { pkgCount: pkgs.length },
     queue: queueState.summarize(state),
@@ -167,10 +161,7 @@ function printReport(data) {
     ps5.install ? `✅ ${ps5.install.busy ? 'OCUPADA' : 'idle'}${ps5.install.pull ? ' (recibiendo)' : ''}` : '❌ no responde'
   }`);
   console.log(`Servidor LAN 9898: ${ps5.serverLan ? '✅ activo' : '❌ caído (npm run ps5:server)'}`);
-  console.log(`IDM: ${data.idm.active ? '⬇️  descargando' : '💤 libre'}`);
-  for (const dir of data.idm.dirs) {
-    console.log(`  - ${dir.name}: ${(dir.bytes / 1e9).toFixed(2)} GB en fragmentos`);
-  }
+  console.log(`aria2c: ${data.aria.active ? `⬇️  descargando: ${data.aria.downloading}` : '💤 libre'} | pendientes: ${data.aria.pending} | staging: ${(data.aria.stagingBytes / 1e9).toFixed(2)} GB`);
   console.log(`Descargas pendientes en Desktop: ${data.archives.pending} archivo(s) | fallidas: ${data.archives.failed}`);
   console.log(`Biblioteca: ${data.library.pkgCount} PKG(s) | instalados registrados: ${data.installedCount}`);
   console.log(line);
@@ -178,7 +169,7 @@ function printReport(data) {
   console.log(`Cola: ${q.total} items | pendientes ${q.pending} | en curso ${q.injected} | completados ${q.completed} | fallidos ${q.failed} | saltados ${q.skipped}`);
   if (q.next) console.log(`Siguiente: ${q.next}`);
   console.log(line);
-  console.log(`Daemons: sequencer ${data.daemons.sequencer ? `✅ pid ${data.daemons.sequencer}` : '⏸️  apagado'} | daemon ${data.daemons.daemon ? `✅ pid ${data.daemons.daemon}` : '⏸️  apagado'} | server ${data.daemons.server ? `✅ pid ${data.daemons.server}` : '⏸️  apagado'}`);
+  console.log(`Daemons: aria_pilot ${data.daemons.aria_pilot ? `✅ pid ${data.daemons.aria_pilot}` : '⏸️  apagado'} | daemon ${data.daemons.daemon ? `✅ pid ${data.daemons.daemon}` : '⏸️  apagado'} | server ${data.daemons.server ? `✅ pid ${data.daemons.server}` : '⏸️  apagado'}`);
   console.log(line);
 }
 

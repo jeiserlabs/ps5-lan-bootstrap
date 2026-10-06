@@ -41,8 +41,7 @@ test('pkg_validator: rechaza archivos sin magic \\x7fCNT', () => {
   }
 });
 
-test('pkg_validator: parseSfoBuffer extrae valores correctamente', () => {
-  // Construir buffer SFO sintético mínimo
+test('pkg_validator: parseSfoBuffer extrae valores correctamente', () => {  // Construir buffer SFO sintético mínimo
   const sfo = Buffer.alloc(128);
   sfo.set(SFO_MAGIC, 0);
   sfo.writeUInt32LE(0x00000101, 4); // version
@@ -64,4 +63,21 @@ test('pkg_validator: parseSfoBuffer extrae valores correctamente', () => {
 
   const parsed = parseSfoBuffer(sfo);
   assert.equal(parsed.TITLE_ID, 'CUSA12345');
+});
+
+test('pkg_validator: rechaza preasignados en ceros (barrera 8 anti-Ragnarok)', () => {
+  // Archivo disperso de 2 GB con magic válido pero cuerpo en ceros:
+  // simula un falloc sin terminar. Debe caer por PREASIGNADO.
+  const tmp = path.join(os.tmpdir(), 'sparse_preasignado_test.pkg');
+  const fd = fs.openSync(tmp, 'w');
+  fs.writeSync(fd, Buffer.from([0x7f, 0x43, 0x4e, 0x54]), 0, 4, 0);
+  fs.writeSync(fd, Buffer.from([0x00]), 0, 1, 2 * 1024 * 1024 * 1024 - 1);
+  fs.closeSync(fd);
+  try {
+    const res = validatePkg(tmp);
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.some((e) => e.includes('PREASIGNADO')), JSON.stringify(res.errors));
+  } finally {
+    fs.unlinkSync(tmp);
+  }
 });

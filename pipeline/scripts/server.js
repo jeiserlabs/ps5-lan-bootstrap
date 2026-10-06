@@ -123,6 +123,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('File not found');
     return;
+  }
   const { filePath } = resolved;
   let stat;
   try {
@@ -225,6 +226,8 @@ function main() {
   });
 }
 
-main();
+if (require.main === module) {
+  main();
+}
 
 module.exports = { resolvePkg };

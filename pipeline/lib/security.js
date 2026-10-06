@@ -1,7 +1,7 @@
 /**
  * @file security.js
  * @description Módulo de seguridad y sanitización estricta anti-path-traversal.
- *   Utilizado en producción por server.js, lan_installer.js y idm_watcher.js.
+ *   Utilizado en producción por server.js, lan_installer.js y aria_pilot.js.
  * SRP < 100L. Cero dependencias externas.
  */
 'use strict';

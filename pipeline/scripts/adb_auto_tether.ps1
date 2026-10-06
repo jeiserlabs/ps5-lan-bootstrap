@@ -35,6 +35,14 @@ function Log-Adb([string]$msg) {
     Add-Content -Path $LogPath -Value $line -ErrorAction SilentlyContinue
 }
 
+# Auto-asegurar IP fija para LAN Gigabit PS5 (192.168.2.1)
+try {
+    $eth = Get-NetIPAddress -InterfaceAlias 'Ethernet' -AddressFamily IPv4 -ErrorAction SilentlyContinue
+    if (-not $eth -or $eth.IPAddress -ne '192.168.2.1') {
+        netsh interface ipv4 set address name="Ethernet" static 192.168.2.1 255.255.255.0 | Out-Null
+    }
+} catch {}
+
 function Invoke-AdbRaw([string]$argsString) {
     $tempErr = [System.IO.Path]::GetTempFileName()
     $tempOut = [System.IO.Path]::GetTempFileName()

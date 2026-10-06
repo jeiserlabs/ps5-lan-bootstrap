@@ -8,6 +8,7 @@ if len(sys.argv) < 3:
 
 title_id = sys.argv[1].upper()
 category = sys.argv[2].upper()
+content_id = sys.argv[3].upper() if len(sys.argv) > 3 else None
 
 try:
     ftp = ftplib.FTP()
@@ -36,7 +37,12 @@ try:
         ftp.retrlines(f"LIST {target_dir}", files.append)
         # Entrada real = ultima columna, excluyendo . y .. (algunos servidores los listan, otros no)
         real = [l.split()[-1] for l in files if len(l.split()) >= 9 and l.split()[-1] not in ('.', '..')]
-        if real:
+        if content_id:
+            match = any(r in content_id or content_id.endswith(r) for r in real)
+            if match:
+                print("OK")
+                sys.exit(0)
+        elif real:
             print("OK")
             sys.exit(0)
     ftp.quit()

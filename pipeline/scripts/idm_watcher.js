@@ -1,294 +1,88 @@
 #!/usr/bin/env node
 /**
  * @file idm_watcher.js
- * @description Daemon centinela IDM: relanza IDM, descomprime RARs en Desktop,
- *   audita PKGs (7 barreras), organiza en biblioteca y auto-dispara LAN installer.
- * SRP < 300L.
+ * @description Monitoriza descargas activas en IDM y notifica por Telegram hitos y fin de cola.
+ * Se auto-termina una vez la cola queda en 0.
+ * SRP < 120L. Cero dependencias externas.
  */
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execSync, spawn } = require('node:child_process');
-const { validatePkg } = require('../lib/pkg_validator.js');
-const { getPs5Config } = require('../lib/config.js');
-const { logPs5 } = require('../lib/pipeline_log.js');
-const { acquirePid, releasePid } = require('../lib/pidfile.js');
-const { extractArchive, cleanupArchiveVolumes, inspectMultiPart } = require('../lib/archive_extractor.js');
-const { resolveGameFolder, moveFileToGameFolder, getBestTargetLibrary, offloadCompletedGames } = require('../lib/library_organizer.js');
-const { sanitizeFilename } = require('../lib/security.js');
+const { sendTelegramMessage } = require('../lib/telegram.js');
 
-const cfg = getPs5Config();
-const WATCH_DIRS = Array.from(new Set([
-  cfg.paths.watchDir,
-  'E:\\',
-  'C:\\Biblioteca_Juegos_PS',
-  'C:\\Users\\dev\\Desktop',
-  'C:\\Users\\dev\\Downloads\\Compressed',
-  'C:\\Users\\dev\\Downloads',
-].filter((d) => d && fs.existsSync(d))));
-const PID_FILE = path.join(cfg.state.cacheDir, 'idm_watcher.pid');
-const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'idm_watcher.log');
-const TAG = 'IDM_WATCHER';
+const IDM_DEV_DIR = 'C:\\Users\\dev\\AppData\\Roaming\\IDM\\DwnlData\\dev';
+const POLL_INTERVAL_MS = 25000;
 
-function getBestTargetDir(source) {
-  return getBestTargetLibrary(source, LOG_FILE);
-}
-
-/** @type {Map<string, number>} */
-const lastSizes = new Map();
-/** @type {Set<string>} */
-const processed = new Set();
-
-function ensureIdmAlive() {
+function getFilenameFromLog(folderPath) {
   try {
-    const stdout = execSync('tasklist /FI "IMAGENAME eq IDMan.exe" /NH', { encoding: 'utf8' });
-    if (!stdout.toLowerCase().includes('idman.exe') && fs.existsSync(cfg.paths.idmExe)) {
-      logPs5(TAG, '⚠️ IDM cerrado. Guardián auto-relanzando con /s...', LOG_FILE);
-      spawn(cfg.paths.idmExe, ['/s'], { detached: true, stdio: 'ignore' }).unref();
-    }
+    const files = fs.readdirSync(folderPath);
+    const logFile = files.find((f) => f.startsWith('log_') && f.endsWith('.log'));
+    if (!logFile) return null;
+    const content = fs.readFileSync(path.join(folderPath, logFile), 'utf8');
+    const m = content.match(/Url\s+https?:\/\/[^\s\n\r]+\/download\/[^\s\n\r\/]+\/([^\s\n\r\?]+)/i);
+    if (m && m[1]) return decodeURIComponent(m[1]);
   } catch {}
+  return null;
 }
 
-function isFileLocked(filePath) {
-  try {
-    const fd = fs.openSync(filePath, 'r+');
-    fs.closeSync(fd);
-    return false;
-  } catch {
-    return true;
+function scanActiveDownloads() {
+  if (!fs.existsSync(IDM_DEV_DIR)) return new Map();
+  const entries = fs.readdirSync(IDM_DEV_DIR, { withFileTypes: true });
+  const map = new Map();
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const folderPath = path.join(IDM_DEV_DIR, ent.name);
+    const resolvedName = getFilenameFromLog(folderPath) || ent.name;
+    map.set(ent.name, resolvedName);
   }
+  return map;
 }
 
-function getExpectedSize(filePath) {
-  try {
-    const fd = fs.openSync(filePath, 'r');
-    const buf = Buffer.alloc(0x420);
-    const readBytes = fs.readSync(fd, buf, 0, 0x420, 0);
-    fs.closeSync(fd);
-    if (readBytes >= 0x420 && buf.readUInt32BE(0) === 0x7f434e54) {
-      return Number(buf.readBigUInt64BE(0x418));
-    }
-  } catch {}
-  return 0;
-}
+async function run() {
+  let knownDownloads = scanActiveDownloads();
+  const totalInitial = knownDownloads.size;
 
-/**
- * Procesa y audita un archivo .pkg validado.
- * @param {string} fullPath Ruta del archivo PKG
- * @param {string} filename Nombre del archivo
- */
-function handlePkgFile(fullPath, filename) {
-  logPs5(TAG, `🔍 Inicio de auditoría forense sobre: ${filename}`, LOG_FILE);
-  const result = validatePkg(fullPath);
-
-  if (result.valid) {
-    const sizeGb = (result.info.sizeBytes / (1024 ** 3)).toFixed(2);
-    logPs5(TAG, `✅ APROBADO: [${result.info.titleId}] ${result.info.title} (${sizeGb} GB) es 100% ÍNTEGRO`, LOG_FILE);
-    const targetDir = getBestTargetDir(fullPath);
-    const gameFolder = resolveGameFolder(targetDir, result.info.title, result.info.titleId);
-    const moveRes = moveFileToGameFolder(fullPath, gameFolder, LOG_FILE);
-    if (moveRes.success) {
-      processed.add(filename);
-      lastSizes.delete(filename);
-    }
-  } else {
-    logPs5(TAG, `❌ RECHAZADO: ${filename} fallo validacion: ${result.errors.join('; ')}`, LOG_FILE);
-    try { fs.renameSync(fullPath, `${fullPath}.corrupt`); } catch {}
-    processed.add(filename);
-    lastSizes.delete(filename);
-  }
-}
-
-const lastRarAttempt = new Map();
-let isExtracting = false;
-let lastExtractionFinishedAt = 0;
-
-function isAnyFileBusy(current) {
-  for (const d of WATCH_DIRS) {
-    try {
-      for (const f of fs.readdirSync(d)) {
-        if (f !== current && (f.endsWith('.pkg') || f.endsWith('.rar')) && isFileLocked(path.join(d, f))) return true;
-      }
-    } catch {}
-  }
-  return false;
-}
-
-function findStagedPkgs(dir) {
-  const list = [];
-  try {
-    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) list.push(...findStagedPkgs(full));
-      else if (ent.name.toLowerCase().endsWith('.pkg')) list.push(full);
-    }
-  } catch {}
-  return list;
-}
-
-function handleRarArchive(fullPath, filename) {
-  const multi = inspectMultiPart(filename);
-  if (multi.isMultiPart && multi.partNum !== 1) return;
-  if (isExtracting || Date.now() - lastExtractionFinishedAt < 15000) return;
-  if (isAnyFileBusy(filename)) {
-    logPs5(TAG, `⏳ IDM reconstruyendo/escribiendo. Descompresión de ${filename} en espera...`, LOG_FILE);
-    return;
+  if (totalInitial === 0) {
+    await sendTelegramMessage('ℹ️ *IDM Watcher:* No hay descargas activas en este momento.');
+    process.exit(0);
   }
 
-  const lastAttempt = lastRarAttempt.get(filename) || 0;
-  if (Date.now() - lastAttempt < 60000) return;
-  lastRarAttempt.set(filename, Date.now());
+  await sendTelegramMessage(
+    `🚀 *IDM Watcher Activo*\n` +
+    `Monitoreando ${totalInitial} descargas activas en IDM.\n` +
+    `Te avisaré por aquí cada vez que se complete un archivo y al finalizar la cola.`
+  );
 
-  isExtracting = true;
-  const targetDir = getBestTargetDir(fullPath);
-  const stagingDir = path.join(targetDir, '_staging');
-  try {
-    logPs5(TAG, `📦 Descompresión segura (1x1, carga balanceada <= 2 hilos): ${filename}...`, LOG_FILE);
-    const extRes = extractArchive(fullPath, stagingDir, LOG_FILE);
-    if (!extRes.success) {
-      logPs5(TAG, `⚠️ Descompresión pendiente: ${extRes.error}`, LOG_FILE);
-      return;
-    }
-    const stagedPkgs = findStagedPkgs(stagingDir);
-    for (const pkgPath of stagedPkgs) handlePkgFile(pkgPath, path.basename(pkgPath));
-    if (stagedPkgs.length > 0) {
-      cleanupArchiveVolumes(fullPath, LOG_FILE);
-      processed.add(filename);
-      lastSizes.delete(filename);
-      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
-      lastExtractionFinishedAt = Date.now();
-    }
-  } finally {
-    isExtracting = false;
-  }
-}
+  const timer = setInterval(async () => {
+    const currentDownloads = scanActiveDownloads();
 
-function checkNewFiles() {
-  ensureIdmAlive();
-
-  for (const watchDir of WATCH_DIRS) {
-    let entries = [];
-    try {
-      entries = fs.readdirSync(watchDir);
-    } catch (err) {
-      logPs5(TAG, `Error leyendo ${watchDir}: ${err.message}`, LOG_FILE);
-      continue;
-    }
-
-    for (const file of entries) {
-      const sanitized = sanitizeFilename(file);
-      if (!sanitized || sanitized !== file) continue;
-      const lower = file.toLowerCase();
-      const isPkg = lower.endsWith('.pkg');
-      const isRar = lower.endsWith('.rar');
-      if (!isPkg && !isRar) continue;
-      if (processed.has(file)) continue;
-
-      const fullPath = path.join(watchDir, file);
-      let stat;
-      try {
-        stat = fs.statSync(fullPath);
-      } catch {
-        continue;
-      }
-
-      // 1. Detección de estabilidad de archivo (evitar procesar mientras IDM escribe)
-      const locked = isFileLocked(fullPath);
-      const prevSize = lastSizes.get(file) || 0;
-      const now = Date.now();
-      const timeSinceMod = now - stat.mtimeMs;
-      const expectedSize = isPkg ? getExpectedSize(fullPath) : 0;
-
-      if (locked || stat.size !== prevSize || (expectedSize > 0 && stat.size < expectedSize) || timeSinceMod < 45000) {
-        lastSizes.set(file, stat.size);
-        const sizeGb = (stat.size / (1024 ** 3)).toFixed(2);
-        const expStr = expectedSize > 0 ? ` / ${(expectedSize / (1024 ** 3)).toFixed(2)} GB` : '';
-        logPs5(TAG, `IDM escribiendo: ${file} [${sizeGb}${expStr}] (locked: ${locked})... esperando`, LOG_FILE);
-        continue;
-      }
-
-      // 2. Archivo completado y estabilizado
-      if (isRar) {
-        handleRarArchive(fullPath, file);
-      } else if (isPkg) {
-        handlePkgFile(fullPath, file);
+    // Detectar descargas completadas
+    for (const [folder, name] of knownDownloads.entries()) {
+      if (!currentDownloads.has(folder)) {
+        const remaining = currentDownloads.size;
+        await sendTelegramMessage(
+          `✅ *IDM Descarga Lista*\n` +
+          `📦 \`${name}\`\n` +
+          `⏳ Restan: ${remaining} archivos en cola.`
+        );
       }
     }
-  }
 
-  if (!isExtracting && !isAnyFileBusy('')) {
-    offloadCompletedGames('E:\\Biblioteca_Juegos_PS', 'C:\\Biblioteca_Juegos_PS', 160, LOG_FILE);
-  }
+    knownDownloads = currentDownloads;
 
-  checkIdmEvents();
-  checkAutoTransition();
-}
-
-/** @type {Set<string>} */
-const idmNotified = new Set();
-
-function checkIdmEvents() {
-  try {
-    const qOut = execSync('reg query HKCU\\Software\\DownloadManager', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
-    for (const m of (qOut.match(/DownloadManager\\(\d+)/g) || [])) {
-      const id = m.split('\\').pop();
-      if (idmNotified.has(id)) continue;
-      try {
-        const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1000 });
-        const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/);
-        if (stM && parseInt(stM[1], 16) === 3) {
-          idmNotified.add(id);
-          logPs5(TAG, `🎉 IDM completó descarga #${id}`, LOG_FILE);
-        }
-      } catch {}
+    if (currentDownloads.size === 0) {
+      clearInterval(timer);
+      await sendTelegramMessage(
+        `🎉 *IDM Cola Finalizada*\n` +
+        `¡Todas las descargas (${totalInitial}/${totalInitial}) han finalizado con éxito en el PC!`
+      );
+      process.exit(0);
     }
-  } catch {}
+  }, POLL_INTERVAL_MS);
 }
 
-let lanInstallerStarted = false;
-
-function checkAutoTransition() {
-  if (lanInstallerStarted) return;
-  try {
-    const qOut = execSync('reg query HKCU\\Software\\DownloadManager\\Queue /v Queue', { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 2000 });
-    const qM = qOut.match(/Queue\s+REG_SZ\s+(.*)$/m);
-    const queueIds = qM ? qM[1].trim().split(/\s+/).filter(Boolean) : [];
-    if (queueIds.length === 0) return;
-    for (const id of queueIds) {
-      const out = execSync(`reg query HKCU\\Software\\DownloadManager\\${id} /v Status`, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8', timeout: 1500 });
-      const stM = out.match(/Status\s+REG_DWORD\s+0x([0-9a-fA-F]+)/m);
-      const st = stM ? parseInt(stM[1], 16) : 0;
-      if (st !== 3 && st !== 5) return;
-    }
-  } catch { return; }
-
-  for (const dir of WATCH_DIRS) {
-    try {
-      for (const f of fs.readdirSync(dir)) {
-        const l = f.toLowerCase();
-        if ((l.endsWith('.pkg') || l.endsWith('.rar')) && !processed.has(f)) return;
-      }
-    } catch {}
-  }
-
-  lanInstallerStarted = true;
-  logPs5(TAG, '🎉 TODAS LAS DESCARGAS COMPLETADAS Y ORGANIZADAS EN DISCO.', LOG_FILE);
-  if (process.env.PS5_AUTO_INSTALL === 'true') {
-    logPs5(TAG, '🚀 Auto-iniciando Fase 2: Instalador LAN...', LOG_FILE);
-    spawn(process.execPath, [path.join(__dirname, 'lan_installer.js')], { detached: true, stdio: 'ignore' }).unref();
-  } else {
-    logPs5(TAG, '⏸️ Instalación en espera (descarga masiva primero / auditoría GLM).', LOG_FILE);
-  }
-}
-
-function main() {
-  if (!acquirePid(PID_FILE)) { console.error(`[${TAG}] Ya hay un watcher activo (${PID_FILE}). Saliendo.`); process.exit(1); }
-  process.on('exit', () => releasePid(PID_FILE));
-  process.on('SIGINT', () => { logPs5(TAG, 'Cerrando centinela...', LOG_FILE); process.exit(0); });
-  logPs5(TAG, `Centinela IDM iniciado. Watch: ${WATCH_DIRS.join(', ')}`, LOG_FILE);
-  setInterval(checkNewFiles, 10000);
-  checkNewFiles();
-}
-
-main();
+run().catch(async (err) => {
+  await sendTelegramMessage(`⚠️ *IDM Watcher Error:* ${err.message}`).catch(() => {});
+  process.exit(1);
+});
