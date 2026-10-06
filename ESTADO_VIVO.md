@@ -27,6 +27,10 @@ Borrados logs: data/logs/adb_auto_tether.log, data/logs/tether_watchdog.log. Sin
 C:\Biblioteca_Juegos_PS: 2 DLC Ragnarok EUR 0.5 MB c/u (validos, retenidos: sin base CUSA34386). Update BB 1080p60fps PURGADO 06-oct (PS5 lo descargo 100% por LAN y lo rechazo al consolidar; entrada falsa re-eliminada del SSOT, queda 38).
 E:\Biblioteca_Juegos_PS: vacia. Desktop: 0 .pkg/.rar/.zip (IDM-only confirmado).
 
+## 4b. IDM EN VUELO (captura 06-oct, 11 archivos ~3.5 MB/s agregados)
+GT7 base CUSA10213 43.33G 10.9% · Ragnarok base 84.40G 4.6% · Ragnarok upd 6.05 (rar) 23.56G 15.5% · Valhalla DLC (rar) 8.20G 48.3% · Miles base 3 rar 39.46G (17-26%) · Miles upd+DLC merged 11.20G 26% · MK11 LAT base 36.98G 4.1% + MK11 MOD-update v1.30 32.37G 3.8% (SENTENCIADO: no instalar, ver §6).
+Proyeccion PS5: +210G sin MK11 (libre final ~150G) / +279G con MK11 (libre ~80G).
+
 ## 5. BLOODBORNE — RESPUESTAS (contexto: PS5 corriendo FPKGs de PS4)
 - Sin update SE PUEDE instalar y jugar: la base v1.00 es el juego completo de principio a fin. Verificado: base instalada OK (29.20G, app.pkg presente).
 - Sin update SE PUEDE jugar, pero a 30fps con tiempos de carga largos y bugs de la 1.00 (Chalice, caidas puntuales). El update v1.09 oficial corrige eso.
