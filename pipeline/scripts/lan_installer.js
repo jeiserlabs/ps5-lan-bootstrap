@@ -212,11 +212,19 @@ async function installPkg(pkgPath, dryRun = false) {
     try {
       if (fs.existsSync(pkgPath)) {
         fs.unlinkSync(pkgPath);
+        if (fs.existsSync(pkgPath)) {
+          throw new Error('el archivo sigue existiendo tras unlink (posible handle abierto del servidor)');
+        }
         logPs5(TAG, `🗑️ Eliminado de PC tras verificar en PS5: ${filename}`, LOG_FILE);
         const pDir = path.dirname(pkgPath);
-        if (fs.existsSync(pDir) && !fs.readdirSync(pDir).length && !LIB_DIRS.includes(pDir)) fs.rmdirSync(pDir);
+        try {
+          if (fs.existsSync(pDir) && !fs.readdirSync(pDir).length && !LIB_DIRS.includes(pDir)) fs.rmdirSync(pDir);
+        } catch {}
       }
-    } catch {}
+    } catch (err) {
+      logPs5(TAG, `⚠️ INSTALADO en PS5 pero NO se pudo borrar del PC (borrar manual): ${filename} — ${err.message}`, LOG_FILE);
+      sendTelegramMessage(`⚠️ *PS5 Aviso*: [${audit.info.titleId}] ${filename} instalado pero sigue en PC (bórralo manual).`);
+    }
     return true;
   }
   logPs5(TAG, `❌ Instalación de ${filename} falló o no superó la verificación.`, LOG_FILE);
