@@ -1,18 +1,19 @@
 # ESTADO_VIVO — PIPELINE PS5 AUTONOMO
-ts: 2026-10-06T13:45:00-05:00
+ts: 2026-10-06T14:20:00-05:00
 host: PC Jeiser (Windows 11 AMD64)
-red_pc: Casa WiFi tarjeta de red (IDM, sin pantalla azul) · tether USB ELIMINADO (sin ADB, sin scripts)
+red_pc: Casa WiFi tarjeta de red (IDM, sin pantalla azul) · tether USB ELIMINADO
 lan_ps5: Ethernet directa 192.168.2.1 <-> 192.168.2.2 (1 Gbps OK)
-ps5_fw: 13.40 Slim · WebKit Autoloader 0.5.2 (:8084) · pkg-receiver (:12800 idle) · ftpsrv (:2121 OK) · elfldr (:9021 cerrado = consola sin jailbreak este boot o apagada)
-ssot: data/cache/ps5/installed_pkgs.json (38 verificados FTP) + ps5_ground_truth_audit.json (fresco 06-oct 13:3x)
+ps5_fw: 13.40 Slim · reboot + Autoloader 0.5.2 OK (autoload 4/4 DONE: kstuff/pkg-receiver/ftpsrv/SM+) · pkg-receiver idle · ftpsrv OK · elfldr cerrado (normal: no esta en autoload)
+ssot: data/cache/ps5/installed_pkgs.json (37 verificados, BB fuera) + ground truth fresco post-reboot
+daemons: server 9898 + watchdog + daemon VIVOS (reiniciados 06-oct con codigo actual; PID stale 13936 eliminado) · aria MUERTO · Telegram verificado (ping enviado OK)
+tareas: PS5_PC_Pipeline (logon) + Loop 15min (resucita server/watchdog/daemon via autostart, bloque daemon añadido 06-oct)
 
-## 1. CONSOLA (Auditoria FTP fresca 06-oct: audit_orphans + cruel_audit_ssot)
-Bases reales (10): Spider-Man 40.44G · Bloodborne 29.20G (app.pkg OK) · GOW 2018 36.06G · A Way Out 15.81G · Tsushima DC 45.31G · CTR 12.59G · It Takes Two 34.33G · Haven 4.31G · HFW 71.27G · MLB 24 48.33G.
-Updates vinculados (5, CERO huerfanos): Spider-Man 15.71G · A Way Out 0.11G · CTR 7.94G · HFW 2.44G · MLB 24 33.92G. Bloodborne SIN patch (update nunca entro; entrada falsa en SSOT ya corregida).
-DLCs: 19 vinculados OK + 1 HUERFANO: CUSA00900 SPEXPANSIONDLC03 (DLC USA sobre base EUR CUSA03173 — inservible, no instalar).
-Stubs sistema 0 bytes (11, inofensivos): CUSA06210/07410/08004/10416/20499/23464/57220/FAKE10101/PKGS12800/PLDM00001/WKAL00001.
-Almacenamiento PS5 (usuario): ~323 GB libres + ~90 GB en Otros (temp/savedata/sistema, /user/download y /data/download limpios).
-Regla: PKG verificado en PS5 se borra del PC. Aplicado: base Bloodborne 29.20 GB eliminada de C:\Biblioteca_Juegos_PS.
+## 1. CONSOLA (Auditoria FTP fresca post-reboot 06-oct 14:1x)
+Bases reales (13, BB borrado por usuario): Spider-Man 40.44G · GOW 2018 36.06G · A Way Out 15.81G · Tsushima DC 45.31G · CTR 12.59G · It Takes Two 34.33G · Haven 4.31G · HFW 71.27G · MLB 24 48.33G.
+Updates vinculados (5, CERO huerfanos): Spider-Man 15.71G · A Way Out 0.11G · CTR 7.94G · HFW 2.44G · MLB 24 33.92G.
+DLCs: 19 vinculados OK + 1 HUERFANO: CUSA00900 SPEXPANSIONDLC03 (USA, inservible).
+Residuos purgados 06-oct: /user/download/CUSA43942 17.6G + /user/download/CUSA28561 256M (restos de installs ya verificados) — /user/download VACIO. /user/temp solo sistema. Otros PS5 bajando en consecuencia.
+Regla: PKG verificado en PS5 se borra del PC.
 
 ## 2. PURGA ARIA COMPLETA (06-oct, IDM manda)Motivo: descargas 100% en IDM por tarjeta de red, sin pantalla azul; aria fuera para que nunca robe ancho de banda.
 Ejecutado: matados aria2c.exe (PID 9264) + aria_pilot.js (PID 11636); borrados tools/aria2c/aria2c.exe, tools/aria2c/aria2.conf (git rm), data/cache/ps5/aria2.session, aria_pilot.pid; bloque 2b eliminado de pipeline/scripts/ps5_pc_autostart.ps1 (tareas PS5_PC_Pipeline/Loop ya no lo resucitan).

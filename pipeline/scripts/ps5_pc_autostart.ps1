@@ -66,6 +66,17 @@ if (Test-PidAlive $wdPid) {
   Write-Log ("Watchdog jailbreak: {0}" -f $(if ($alive) { 'levantado OK' } else { 'FALLO al levantar (revisar kstuff_watchdog.log)' }))
 }
 
+# 2b) Daemon del pipeline (mueve PKGs de IDM a biblioteca e instala en cascada)
+$daemonPid = Join-Path $root 'data\cache\ps5\daemon.pid'
+if (Test-PidAlive $daemonPid) {
+  Write-Log 'Daemon pipeline: ya activo, no se duplica.'
+} else {
+  Start-HiddenNode (Join-Path $root 'pipeline\scripts\daemon.js')
+  Start-Sleep -Seconds 3
+  $alive = Test-PidAlive $daemonPid
+  Write-Log ("Daemon pipeline: {0}" -f $(if ($alive) { 'levantado OK' } else { 'FALLO al levantar (revisar ps5_pipeline.log)' }))
+}
+
 # 3) Host del exploit (DNS+HTTPS 100% local: manuals.playstation.net -> 192.168.2.1)
 #    Sin el, la app WebKit Autoloader no carga pagina tras un reinicio de la PS5.
 $hostProc = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'webkit-autoloader-host' }
