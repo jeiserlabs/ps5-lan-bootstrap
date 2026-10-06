@@ -134,18 +134,21 @@ def run_cruel_audit():
 
         # Registrar en SSOT
         if has_base:
-            verified_pkgs.append(f"{tid}_BASE")
+            verified_pkgs.append(f"{tid}_BASE.pkg")
         if has_patch:
-            verified_pkgs.append(f"{tid}_PATCH")
+            verified_pkgs.append(f"{tid}_UPDATE.pkg")
         for d in dlc_list:
-            verified_pkgs.append(f"{tid}_DLC_{d}")
+            verified_pkgs.append(f"{tid}_DLC_{d}.pkg")
 
     ftp.quit()
 
     # Guardar SSOT sincronizado
     os.makedirs(os.path.dirname(SSOT_PATH1), exist_ok=True)
-    with open(SSOT_PATH1, 'w', encoding='utf-8') as f:
+    audit_obj_path = os.path.join(ROOT, "data", "cache", "ps5", "ps5_ground_truth_audit.json")
+    with open(audit_obj_path, 'w', encoding='utf-8') as f:
         json.dump(audit_data, f, indent=2, ensure_ascii=False)
+    with open(SSOT_PATH1, 'w', encoding='utf-8') as f:
+        json.dump(verified_pkgs, f, indent=2, ensure_ascii=False)
     with open(SSOT_PATH2, 'w', encoding='utf-8') as f:
         json.dump(verified_pkgs, f, indent=2, ensure_ascii=False)
 
