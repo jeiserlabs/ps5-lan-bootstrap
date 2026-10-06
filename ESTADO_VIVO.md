@@ -14,8 +14,7 @@ Stubs sistema 0 bytes (11, inofensivos): CUSA06210/07410/08004/10416/20499/23464
 Almacenamiento PS5 (usuario): ~323 GB libres + ~90 GB en Otros (temp/savedata/sistema, /user/download y /data/download limpios).
 Regla: PKG verificado en PS5 se borra del PC. Aplicado: base Bloodborne 29.20 GB eliminada de C:\Biblioteca_Juegos_PS.
 
-## 2. PURGA ARIA COMPLETA (06-oct, IDM manda)
-Motivo: descargas 100% en IDM por tarjeta de red, sin pantalla azul; aria fuera para que nunca robe ancho de banda.
+## 2. PURGA ARIA COMPLETA (06-oct, IDM manda)Motivo: descargas 100% en IDM por tarjeta de red, sin pantalla azul; aria fuera para que nunca robe ancho de banda.
 Ejecutado: matados aria2c.exe (PID 9264) + aria_pilot.js (PID 11636); borrados tools/aria2c/aria2c.exe, tools/aria2c/aria2.conf (git rm), data/cache/ps5/aria2.session, aria_pilot.pid; bloque 2b eliminado de pipeline/scripts/ps5_pc_autostart.ps1 (tareas PS5_PC_Pipeline/Loop ya no lo resucitan).
 Codigo aria queda dormido en repo (aria_pilot.js, lib/aria_client.js, check_links.js) por si se reactiva algun dia; runtime cero.
 Cola: 2 pendientes sin URL (re-mint): HZD-EUR + Miles Morales EUR. Las baja IDM manual; el daemon solo mueve/instala lo que caiga en biblioteca.
