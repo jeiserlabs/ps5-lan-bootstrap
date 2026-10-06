@@ -1,40 +1,41 @@
 # ESTADO_VIVO — PIPELINE PS5 AUTONOMO
-ts: 2026-10-06T08:12:00-05:00
+ts: 2026-10-06T13:45:00-05:00
 host: PC Jeiser (Windows 11 AMD64)
-red_pc: Casa WiFi TP-Link USB (192.168.1.64, 1.6 MB/s) · tether USB DESENCHUFADO
+red_pc: Casa WiFi tarjeta de red (IDM, sin pantalla azul) · tether USB ELIMINADO (sin ADB, sin scripts)
 lan_ps5: Ethernet directa 192.168.2.1 <-> 192.168.2.2 (1 Gbps OK)
-ps5_fw: 13.40 Slim · WebKit Autoloader 0.5.2 (:8084 OK) · pkg-receiver (:12800 OK) · ftpsrv (:2121 OK) · elfldr (:9021 cerrado)
-ssot: data/cache/ps5/queue_state.json (22) + installed_pkgs.json (37 reales)
+ps5_fw: 13.40 Slim · WebKit Autoloader 0.5.2 (:8084) · pkg-receiver (:12800 idle) · ftpsrv (:2121 OK) · elfldr (:9021 cerrado = consola sin jailbreak este boot o apagada)
+ssot: data/cache/ps5/installed_pkgs.json (38 verificados FTP) + ps5_ground_truth_audit.json (fresco 06-oct 13:3x)
 
-## 1. CONSOLA (Auditada cruelmente via FTP 2121)
-Juegos Base (9 reales + stubs/sys): Spider-Man (40.44G) · GOW 2018 (36.06G) · A Way Out (15.81G) · Tsushima DC (45.31G) · CTR (12.59G) · It Takes Two (34.33G) · Haven (4.31G) · HFW (71.27G) · MLB 24 (48.33G).
-Updates (5): Spider-Man (15.71G) · A Way Out (0.11G) · CTR (7.94G) · HFW (2.44G) · MLB 24 (33.92G).
-DLCs (19 vinculados + 1 huerfano): CUSA00900_SPEXPANSIONDLC03 huerfano (BB USA sin base).
-Almacenamiento PS5: 368.57 GB ocupados en /user -> ~479 GB libres en SSD Slim (~848 GB utilizables). NO falta espacio.
+## 1. CONSOLA (Auditoria FTP fresca 06-oct: audit_orphans + cruel_audit_ssot)
+Bases reales (10): Spider-Man 40.44G · Bloodborne 29.20G (app.pkg OK) · GOW 2018 36.06G · A Way Out 15.81G · Tsushima DC 45.31G · CTR 12.59G · It Takes Two 34.33G · Haven 4.31G · HFW 71.27G · MLB 24 48.33G.
+Updates vinculados (5, CERO huerfanos): Spider-Man 15.71G · A Way Out 0.11G · CTR 7.94G · HFW 2.44G · MLB 24 33.92G. Bloodborne SIN patch (update nunca entro; entrada falsa en SSOT ya corregida).
+DLCs: 19 vinculados OK + 1 HUERFANO: CUSA00900 SPEXPANSIONDLC03 (DLC USA sobre base EUR CUSA03173 — inservible, no instalar).
+Stubs sistema 0 bytes (11, inofensivos): CUSA06210/07410/08004/10416/20499/23464/57220/FAKE10101/PKGS12800/PLDM00001/WKAL00001.
+Almacenamiento PS5 (usuario): ~323 GB libres + ~90 GB en Otros (temp/savedata/sistema, /user/download y /data/download limpios).
+Regla: PKG verificado en PS5 se borra del PC. Aplicado: base Bloodborne 29.20 GB eliminada de C:\Biblioteca_Juegos_PS.
 
-## 2. INCIDENCIA RESUELTA: CAUSA RAIZ 500 EN SERVER LAN (BB BASE)
-server.js previo (PID 11256 de ayer) tenia bug de llave/scope en if(!resolved).
-Al pedir cualquier PKG existente devolvia HTTP 500 Internal Server Error (arranque fallido BB).
-Solucionado: server.js corregido, require guard (`require.main === module`), reiniciado (PID 1224).
-Verificado: HEAD curl responde HTTP 200 OK exacto en Base BB (31.35 GB) y Update (181 MB).
-daemon.js refactorizado (257L < 300L SRP): ya NO registra installed prematuro; delega a lan_installer con verificacion FTP real.
+## 2. PURGA ARIA COMPLETA (06-oct, IDM manda)
+Motivo: descargas 100% en IDM por tarjeta de red, sin pantalla azul; aria fuera para que nunca robe ancho de banda.
+Ejecutado: matados aria2c.exe (PID 9264) + aria_pilot.js (PID 11636); borrados tools/aria2c/aria2c.exe, tools/aria2c/aria2.conf (git rm), data/cache/ps5/aria2.session, aria_pilot.pid; bloque 2b eliminado de pipeline/scripts/ps5_pc_autostart.ps1 (tareas PS5_PC_Pipeline/Loop ya no lo resucitan).
+Codigo aria queda dormido en repo (aria_pilot.js, lib/aria_client.js, check_links.js) por si se reactiva algun dia; runtime cero.
+Cola: 2 pendientes sin URL (re-mint): HZD-EUR + Miles Morales EUR. Las baja IDM manual; el daemon solo mueve/instala lo que caiga en biblioteca.
 
-## 3. BIBLIOTECA PC & HALLAZGOS COMPATIBILIDAD
-Bloodborne Base: CUSA03173-Game-PRELUDE (29.20 GiB / 31.35 GB) validado 8/8 OK.
-Bloodborne Update: CUSA03173 v1.09 60fps (181 MB) validado OK.
-Bloodborne DLC: CUSA03173-DLC...pkg en disco tiene SFO = CUSA00900 (USA, incompatible con Base EUR CUSA03173).
-GoW Ragnarok DLCs EUR (CUSA34386 Deluxe + Preorder) OK retenidos esperando base.
+## 3. PURGA TETHER COMPLETA (06-oct, ya no hay tether)
+Borrados del repo (git rm): pipeline/scripts/adb_auto_tether.ps1, pipeline/scripts/safe_tether_watchdog.ps1.
+Borrados logs: data/logs/adb_auto_tether.log, data/logs/tether_watchdog.log. Sin tareas programadas de tether (solo PS5_PC_Pipeline + Loop).
 
-## 4. DESCARGAS ACTIVAS (IDM)
-10 items en IDM (18.55 GB bajados en chunks):
-- Miles Morales EUR CUSA17776 (parts 1, 2, 3 + update/dlc)
-- GT7 EUR Base CUSA10213
-- GoW Ragnarok EUR CUSA34386 (Base + Upd 6.05 + Valhalla)
-- MK11 LAT Base (MOD v1.30 sentenciado: no instalar)
-Telegram: usuario envio links frescos akirabox de GT7 Base + Update 1.54.
+## 4. BIBLIOTECA PC (solo 3 archivos, Desktop y staging limpios)
+C:\Biblioteca_Juegos_PS: Bloodborne Update v1.09 60fps 172.9 MB (PENDIENTE instalar, compatible: mismo CUSA03173 + Content-ID EU) + 2 DLC Ragnarok EUR 0.5 MB c/u (validos, retenidos: sin base CUSA34386).
+E:\Biblioteca_Juegos_PS: vacia. Desktop: 0 .pkg/.rar/.zip (IDM-only confirmado).
 
-## 5. SIGUIENTES ACCIONES
-1. Instalar Bloodborne Base EUR (31.35 GB) via LAN a PS5 con server.js ya reparado.
-2. Tras Base OK: instalar Update v1.09 60fps (181 MB).
-3. Conseguir DLC The Old Hunters EUR (CUSA03173) para reemplazar DLC huerfano USA (CUSA00900).
-4. Esperar finalizacion descargas IDM (Miles Morales / Ragnarok / GT7).
+## 5. BLOODBORNE — RESPUESTAS (contexto: PS5 corriendo FPKGs de PS4)
+- Sin update SE PUEDE instalar y jugar: la base v1.00 es el juego completo de principio a fin. Verificado: base instalada OK (29.20G, app.pkg presente).
+- Sin update SE PUEDE jugar, pero a 30fps con tiempos de carga largos y bugs de la 1.00 (Chalice, caidas puntuales). El update v1.09 oficial corrige eso.
+- El update que tienes NO es Sony puro: es 1.09 + parche 60fps de la escena (mismo Title/Content-ID, pasa validacion forense). En PS5 con kstuff es lo recomendado: 30 -> 60fps reales. Necesario? No. Deseable? Mucho.
+- Accion: al corregir el SSOT el update quedo pendiente y el daemon vivo lo instalara solo (181 MB, ~1 min, consola idle). Si NO lo quieres, dilo y lo retengo/borro.
+
+## 6. SIGUIENTES ACCIONES
+1. (auto) Daemon instala Bloodborne Update v1.09 60fps salvo orden contraria.
+2. Conseguir DLC The Old Hunters EUR (CUSA03173); el CUSA00900 huerfano no sirve.
+3. IDM sigue con HZD-EUR + Miles Morales EUR (links re-mint pendientes).
+4. NO reinstalar aria ni tether. NO tocar firmware (14.xx cierra la puerta).
