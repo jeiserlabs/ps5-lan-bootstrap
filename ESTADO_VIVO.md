@@ -1,12 +1,13 @@
 # ESTADO_VIVO — PIPELINE PS5 AUTONOMO
-ts: 2026-10-06T14:20:00-05:00
+ts: 2026-10-06T15:00:00-05:00
 host: PC Jeiser (Windows 11 AMD64)
-red_pc: Casa WiFi tarjeta de red (IDM, sin pantalla azul) · tether USB ELIMINADO
-lan_ps5: Ethernet directa 192.168.2.1 <-> 192.168.2.2 (1 Gbps OK)
-ps5_fw: 13.40 Slim · reboot + Autoloader 0.5.2 OK (autoload 4/4 DONE: kstuff/pkg-receiver/ftpsrv/SM+) · pkg-receiver idle · ftpsrv OK · elfldr cerrado (normal: no esta en autoload)
-ssot: data/cache/ps5/installed_pkgs.json (37 verificados, BB fuera) + ground truth fresco post-reboot
-daemons: server 9898 + watchdog + daemon VIVOS (reiniciados 06-oct con codigo actual; PID stale 13936 eliminado) · aria MUERTO · Telegram verificado (ping enviado OK)
-tareas: PS5_PC_Pipeline (logon) + Loop 15min (resucita server/watchdog/daemon via autostart, bloque daemon añadido 06-oct)
+red_pc: Tether USB S23 Ultra (comparte WIFI, sin riesgo datos) · Samsung Remote NDIS OK · IDM 1x1 recomendado (cola secuencial, 4 conexiones/archivo)
+lan_ps5: Ethernet directa 192.168.2.1 <-> 192.168.2.2 (1 Gbps, ping 0ms OK)
+ps5_fw: 13.40 Slim · reboot + Autoloader 0.5.2 OK (autoload 4/4 DONE) · pkg-receiver idle · ftpsrv OK · elfldr cerrado (normal)
+ssot: data/cache/ps5/installed_pkgs.json (39 verificados: 11 juegos, Miles incluido) + ground truth fresco
+daemons: server + watchdog + daemon VIVOS codigo actual · aria MUERTO · Telegram OK
+tareas: PS5_PC_Pipeline (logon) + Loop 15min (resucita server/watchdog/daemon)
+juegos_ps5: 11 instalados (10 + Miles Morales base+update/DLC verificados FTP 06-oct). BB borrado. Libre PS5 ~150G proyectado al cerrar tanda (sin MK11).
 
 ## 1. CONSOLA (Auditoria FTP fresca post-reboot 06-oct 14:1x)
 Bases reales (13, BB borrado por usuario): Spider-Man 40.44G · GOW 2018 36.06G · A Way Out 15.81G · Tsushima DC 45.31G · CTR 12.59G · It Takes Two 34.33G · Haven 4.31G · HFW 71.27G · MLB 24 48.33G.
@@ -28,9 +29,10 @@ Borrados logs: data/logs/adb_auto_tether.log, data/logs/tether_watchdog.log. Sin
 C:\Biblioteca_Juegos_PS: 2 DLC Ragnarok EUR 0.5 MB c/u (validos, retenidos: sin base CUSA34386). Update BB 1080p60fps PURGADO 06-oct (PS5 lo descargo 100% por LAN y lo rechazo al consolidar; entrada falsa re-eliminada del SSOT, queda 38).
 E:\Biblioteca_Juegos_PS: vacia. Desktop: 0 .pkg/.rar/.zip (IDM-only confirmado).
 
-## 4b. IDM EN VUELO (captura 06-oct, 11 archivos ~3.5 MB/s agregados)
-GT7 base CUSA10213 43.33G 10.9% · Ragnarok base 84.40G 4.6% · Ragnarok upd 6.05 (rar) 23.56G 15.5% · Valhalla DLC (rar) 8.20G 48.3% · Miles base 3 rar 39.46G (17-26%) · Miles upd+DLC merged 11.20G 26% · MK11 LAT base 36.98G 4.1% + MK11 MOD-update v1.30 32.37G 3.8% (SENTENCIADO: no instalar, ver §6).
-Proyeccion PS5: +210G sin MK11 (libre final ~150G) / +279G con MK11 (libre ~80G).
+## 4b. IDM EN VUELO (06-oct; OJO: perdida 92G 06-oct tarde)
+Tanda: GT7 base CUSA10213 43.33G · Ragnarok base 84.40G · Ragnarok upd 6.05 rar 23.56G (iba 83%) · Valhalla DLC rar 8.20G (COMPLETADO+extraido+validado CUSA34386, retenido sin base) · Miles base 3 rar 39.46G (COMPLETADO, base 38.29G instalada+verificada, rars borrados) · Miles upd+DLC 11.21G (instalado+verificado) · MK11 LAT base 36.98G + MK11 MOD-update v1.30 32.37G (SENTENCIADO: no instalar ni bajar).
+INCIDENTE 06-oct: cambio a tether S23 + reinicio IDM mato ~92G de parciales (chunks vaciados, links Akira expirados por sesion/IP). Leccion: links Akira mueren con cambio de red; re-capturar URL frescas con la red final activa. Recuperar en orden: Ragnarok upd → GT7 → Ragnarok base → (MK11 base opcional, MOD jamas).
+Proyeccion PS5: +210G sin MK11 (libre final ~150G).
 
 ## 5. BLOODBORNE — RESPUESTAS (contexto: PS5 corriendo FPKGs de PS4)
 - Sin update SE PUEDE instalar y jugar: la base v1.00 es el juego completo de principio a fin. Verificado: base instalada OK (29.20G, app.pkg presente).
@@ -41,7 +43,7 @@ Proyeccion PS5: +210G sin MK11 (libre final ~150G) / +279G con MK11 (libre ~80G)
 - GOTY vs Complete (06-oct): ambas ediciones EUR son el MISMO CUSA03173 con Old Hunters integrado; difieren solo en nombre del release de la escena. No existe Ultimate oficial de Bloodborne. El oficial 1.09 instala en cualquier CUSA03173; lo que el PS5 rechaza es el repack modeado 60fps mal hecho (probado: RANGE 100% + rollback, sin patch.pkg). NO re-descargar base 29 GB (la instalada funciona): traer solo update oficial 1.09 u otro 60fps de mejor fuente.
 
 ## 6. SIGUIENTES ACCIONES
-1. (auto) Daemon instala Bloodborne Update v1.09 60fps salvo orden contraria.
-2. Conseguir DLC The Old Hunters EUR (CUSA03173); el CUSA00900 huerfano no sirve.
-3. IDM sigue con HZD-EUR + Miles Morales EUR (links re-mint pendientes).
-4. NO reinstalar aria ni tether. NO tocar firmware (14.xx cierra la puerta).
+1. Re-añadir URLs frescas Akira en IDM (red S23 activa), cola 1x1: Ragnarok upd → GT7 → Ragnarok base → MK11 base opcional. MOD v1.30 JAMAS.
+2. Conseguir DLC Old Hunters EUR solo si se reinstala Bloodborne (pendiente decision; base anterior borrada de consola y PC).
+3. Fixes aplicados 06-oct: borrado post-install verificado (lan_installer) · EXDEV copy+unlink C:-E: (daemon) · watchDir Desktop (config local) · daemon en autostart.
+4. NO reinstalar aria ni tether-scripts. NO tocar firmware. NO borrar datos navegador PS5.
