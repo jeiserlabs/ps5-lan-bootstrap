@@ -127,7 +127,13 @@ function processPendingArchives() {
     if (pkgRules.isModBlocked(file)) {
       try {
         fs.mkdirSync(quarantine, { recursive: true });
-        fs.renameSync(fullPath, path.join(quarantine, file));
+        try {
+          fs.renameSync(fullPath, path.join(quarantine, file));
+        } catch (err) {
+          if (err.code !== 'EXDEV') throw err;
+          fs.copyFileSync(fullPath, path.join(quarantine, file));
+          fs.unlinkSync(fullPath);
+        }
         logPs5(TAG, `🚫 MOD bloqueado y en cuarentena: ${file}`, cfg.state.logFile);
         notifyTg(`🚫 <b>MOD bloqueado:</b> <code>${file}</code> va a cuarentena, no a la consola.`);
       } catch (err) {
@@ -192,7 +198,14 @@ function processLoosePkgs() {
       if (Date.now() - stat.mtimeMs < 60000) continue;
       const dest = path.join(cfg.paths.libraryDirs[0], file);
       if (fs.existsSync(dest)) continue;
-      fs.renameSync(fullPath, dest);
+      try {
+        fs.renameSync(fullPath, dest);
+      } catch (err) {
+        if (err.code !== 'EXDEV') throw err;
+        // Cross-device (C: -> E:): copiar + borrar en vez de renombrar.
+        fs.copyFileSync(fullPath, dest);
+        fs.unlinkSync(fullPath);
+      }
       logPs5(TAG, `PKG movido a biblioteca: ${file}`, cfg.state.logFile);
     } catch (err) {
       logPs5(TAG, `No se pudo mover ${file}: ${err.message}`, cfg.state.logFile);
