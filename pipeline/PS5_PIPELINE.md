@@ -2,7 +2,7 @@
 
 Pipeline PC→PS5: descargar (aria2c) → extraer → servir por LAN → instalar en consola jailbroken.
 Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
-Motor de descargas: **aria2c headless** (`tools/aria2c/`) orquestado por `aria_pilot.js` (IDM eliminado el 5-oct-2026).
+Motor de descargas: **IDM en WAN** (aria2c purgado el 6-oct-2026 tras resolverse el BSOD con RNDIS6; `aria_pilot.js` queda como piloto alternativo, no vigente).
 
 ## Comandos
 

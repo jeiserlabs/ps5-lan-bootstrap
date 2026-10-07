@@ -5,7 +5,7 @@ audit_full.py — Auditoria completa biblioteca PC <-> consola PS5.
 Cruza tres fuentes y reporta por Telegram (--telegram) o stdout:
   1. Disco PC    : PKGs en C:\\Biblioteca_Juegos_PS y E:\\Biblioteca_Juegos_PS
   2. Consola FTP : /user/app (juegos), /user/patch (updates), /user/addcont (DLCs)
-  3. Registro    : installed_pkgs_ps5.json del repo
+  3. Registro    : data/cache/ps5/installed_pkgs.json (SSOT; fallback legacy installed_pkgs_ps5.json)
 
 Clasifica por nombre con la misma heuristica que pipeline/lib/pkg_rules.js:
 UPDATE > DLC > FIX > FullGame(BASE) > vX.Y>1.0 (UPDATE) > BASE.
@@ -28,7 +28,10 @@ import urllib.parse
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PS5_IP = "192.168.2.2"
 LIBS = [r"C:\Biblioteca_Juegos_PS", r"E:\Biblioteca_Juegos_PS"]
-REGISTRY = os.path.join(ROOT, "installed_pkgs_ps5.json")
+SSOT_REGISTRY = os.path.join(ROOT, "data", "cache", "ps5", "installed_pkgs.json")
+LEGACY_REGISTRY = os.path.join(ROOT, "installed_pkgs_ps5.json")
+# SSOT unico: data/cache/ps5/installed_pkgs.json. El legacy de raiz solo es fallback.
+REGISTRY = SSOT_REGISTRY if os.path.exists(SSOT_REGISTRY) else LEGACY_REGISTRY
 
 RE_UPDATE = re.compile(r"(^|[^a-z])(update|upd)([^a-z]|$)|_patch|patch_|updatev|_a0*[1-9]\d*-|-a0*[1-9]\d*-", re.I)
 RE_DLC = re.compile(r"-a0000-|(^|[^a-z])(dlc|addon|seasonpass|season-pass|unlock|deluxe|bonus|expansion)([^a-z]|$)", re.I)

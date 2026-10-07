@@ -151,7 +151,7 @@ async function ensureAutoloadConfig(log) {
   } catch {
     return false;
   }
-  const hasCore = /kstuff/i.test(list) && /pkg-receiver/i.test(list) && /ftpsrv/i.test(list) && /elfldr/i.test(list);
+  const hasCore = /kstuff/i.test(list) && /pkg-receiver/i.test(list) && /ftpsrv/i.test(list) && /elfldr/i.test(list) && /shadowmount/i.test(list);
   if (hasCore) return true;
 
   // Reintento de lectura antes de escribir: evita pisar config buena por una respuesta cortada.
@@ -161,7 +161,7 @@ async function ensureAutoloadConfig(log) {
   try {
     retryList = String(JSON.parse((retry && retry.body) || '{}').AUTOLOAD_LIST || '');
   } catch {}
-  if (/kstuff/i.test(retryList) && /pkg-receiver/i.test(retryList) && /ftpsrv/i.test(retryList) && /elfldr/i.test(retryList)) return true;
+  if (/kstuff/i.test(retryList) && /pkg-receiver/i.test(retryList) && /ftpsrv/i.test(retryList) && /elfldr/i.test(retryList) && /shadowmount/i.test(retryList)) return true;
 
   log('⚠️ AUTOLOAD_LIST incompleta o vacía en la consola. Restaurando canónica...');
   const set = await httpPostJson(`${PMGR}/set_config`, { AUTOLOAD_LIST: CANONICAL_AUTOLOAD });

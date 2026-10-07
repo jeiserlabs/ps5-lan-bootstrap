@@ -1,3 +1,6 @@
+# ⛔ ARCHIVED / WONTFIX — PLAN ARIA2C NO VIGENTE (IDM manda en WAN tras fix BSOD RNDIS6, 7-oct-2026)
+> Estado: espec historica. No auditar como arquitectura activa. Motor real: IDM (ver ESTADO_VIVO.md). aria2c purgado (sin exe, sin proceso).
+
 # PLAN DE IMPLEMENTACIÓN: PIPELINE AUTÓNOMO ARIA2C (CAVEMAN ULTRA / SPEC)
 AUTOR: Claude Opus 4.6 (Thinking - Rol Auditor/Planificador)
 FECHA: 2026-10-05T05:55:00-05:00

@@ -3,6 +3,8 @@
 # programada "PS5_PC_Pipeline" al iniciar sesion de Windows).
 #   1. Servidor LAN de PKGs (server.js, puerto 9898)   - si no responde /healthz
 #   2. Watchdog del jailbreak (kstuff_watchdog.js)     - si no hay pid vivo
+#   2b. Daemon del pipeline (daemon.js)                - si no hay pid vivo
+#   3. Host del exploit (webkit-autoloader-host)       - si no hay proceso vivo
 # Idempotente: si algo ya esta corriendo, no lo duplica (respeta pidfiles).
 # Log: data/logs/ps5_pc_autostart.log
 
