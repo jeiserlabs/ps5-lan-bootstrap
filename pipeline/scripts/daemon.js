@@ -104,12 +104,13 @@ function listPkgs() {
 
 /**
  * Limpieza post-éxito: borra TODO el conjunto multipart con matcher exacto
- * (no solo el volumen que disparó la extracción). Función de producción
- * ejercitada por daemon_cleanup.test.js.
+ * (no solo el volumen que disparó la extracción). Retorna el reporte del
+ * cleanup para no declarar éxito si algún volumen quedó bloqueado.
  * @param {string} archivePath
+ * @returns {{ ok: boolean, deleted: string[], failed: string[] }}
  */
 function handleArchiveSuccess(archivePath) {
-  cleanupArchiveVolumes(archivePath, cfg.state.logFile);
+  return cleanupArchiveVolumes(archivePath, cfg.state.logFile);
 }
 
 function processPendingArchives() {
@@ -166,8 +167,12 @@ function processPendingArchives() {
     // se borrara el volumen disparador, part02/part03 quedarían huérfanos y el
     // siguiente ciclo entraría en retryable esperando un part01 ya eliminado.
     try {
-      handleArchiveSuccess(fullPath);
-      logPs5(TAG, `Extraído y verificado (volúmenes eliminados): ${file}`, cfg.state.logFile);
+      const cleanup = handleArchiveSuccess(fullPath);
+      if (cleanup.failed.length > 0) {
+        logPs5(TAG, `Extraído, pero quedaron volúmenes sin borrar: ${cleanup.failed.join(', ')} (reintento próximo ciclo)`, cfg.state.logFile);
+      } else {
+        logPs5(TAG, `Extraído y verificado (volúmenes eliminados): ${file}`, cfg.state.logFile);
+      }
       notifyTg(`📦 <b>Juego Extraído y Listo:</b>\n• <code>${file}</code>\n• Preparando para enviar a PS5.`);
     } catch {
       logPs5(TAG, `Extraído, pero no se pudo borrar el comprimido: ${file}`, cfg.state.logFile);

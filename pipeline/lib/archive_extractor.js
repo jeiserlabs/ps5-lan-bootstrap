@@ -148,12 +148,18 @@ function extractArchive(archivePath, outDir, logFile) {
 
     if (tool === '7z') {
       const listProc = spawnSync(SEVEN_ZIP, ['l', targetArchive, '-slt'], {
-        encoding: 'utf8',
-        maxBuffer: 2 * 1024 * 1024,
-        timeout: 5000,
+        encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 5000,
       });
-      if (listProc.status !== 0 || (listProc.stdout && listProc.stdout.includes('Missing volume'))) {
+      const listOut = `${listProc.stdout || ''}\n${listProc.stderr || ''}`;
+      // Solo "volumen ausente" es retryable. Otro fallo de `7z l` (cabecera
+      // corrupta, binario roto) es permanente: iría a .failed en vez de
+      // reintentar eternamente y bloquear la carpeta.
+      if (/missing volume/i.test(listOut)) {
         return { success: false, retryable: true, extractedFiles: [], error: 'Volúmenes incompletos: faltan partes restantes (esperando descarga).' };
+      }
+      if (listProc.status !== 0 || listProc.error) {
+        const why = (listProc.error && listProc.error.message) || `código ${listProc.status}`;
+        return { success: false, extractedFiles: [], error: `Listado 7z falló (archivo corrupto o ilegible): ${why}.` };
       }
     }
   }
@@ -249,37 +255,36 @@ function extractArchive(archivePath, outDir, logFile) {
 
 /**
  * Elimina todos los volúmenes de un archivo multi-parte o un archivo único.
+ * Reporta el resultado por archivo: un volumen bloqueado no aborta el resto.
  * @param {string} archivePath
  * @param {string} [logFile]
+ * @returns {{ ok: boolean, deleted: string[], failed: string[] }}
  */
 function cleanupArchiveVolumes(archivePath, logFile) {
   const dir = path.dirname(archivePath);
   const baseName = path.basename(archivePath);
   const multi = inspectMultiPart(baseName);
-
+  const deleted = [];
+  const failed = [];
+  const rm = (d, f) => {
+    try { fs.unlinkSync(path.join(d, f)); deleted.push(f); return true; }
+    catch { failed.push(f); return false; }
+  };
   if (multi.isMultiPart && multi.basePattern) {
-    try {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        if (isSameMultipartVolume(file, multi.basePattern)) {
-          const p = path.join(dir, file);
-          fs.unlinkSync(p);
-          logPs5(TAG, `🧹 Volumen eliminado para liberar disco: ${file}`, logFile);
-        }
-      }
-    } catch (e) {
-      logPs5(TAG, `Error eliminando volúmenes multi-parte: ${e.message}`, logFile);
+    let files = [];
+    try { files = fs.readdirSync(dir); } catch (e) {
+      logPs5(TAG, `Error listando volúmenes multi-parte: ${e.message}`, logFile);
     }
-  } else {
-    try {
-      if (fs.existsSync(archivePath)) {
-        fs.unlinkSync(archivePath);
-        logPs5(TAG, `🧹 Archivo eliminado para liberar disco: ${baseName}`, logFile);
-      }
-    } catch (e) {
-      logPs5(TAG, `Error eliminando archivo: ${e.message}`, logFile);
+    for (const file of files) {
+      if (!isSameMultipartVolume(file, multi.basePattern)) continue;
+      if (rm(dir, file)) logPs5(TAG, `🧹 Volumen eliminado: ${file}`, logFile);
+      else logPs5(TAG, `⚠️ No se pudo borrar ${file} (reintento próximo ciclo)`, logFile);
     }
+  } else if (fs.existsSync(archivePath)) {
+    if (rm(dir, baseName)) logPs5(TAG, `🧹 Archivo eliminado: ${baseName}`, logFile);
+    else logPs5(TAG, `⚠️ No se pudo borrar ${baseName} (reintento próximo ciclo)`, logFile);
   }
+  return { ok: failed.length === 0, deleted, failed };
 }
 
 module.exports = {

@@ -100,7 +100,7 @@ Desconecta la PS5 del PC cuando quieras: **la consola ya no lo necesita**. En ca
 | `npm run ps5:server` | Servidor LAN de PKGs (9898) |
 | `npm run ps5:send-elf -- x.elf` | Empujar un payload por elfldr (9021) |
 | `npm run ps5:daemon` / `ps5:aria-pilot` | Instalación/descargas automatizadas |
-| `npm test` | Suite de tests (73 tests / 7 suites, cero dependencias) |
+| `npm test` | Suite de tests (81 tests / 7 suites, cero dependencias) |
 
 ## 📦 Payloads incluidos (SHA256 verificados)
 

@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Watchdog elfldr 9021:** `repairCycle` relanza `elfldr-ps5.elf` y la salud exige 12800+2121+9021; autoload canónico exige kstuff+elfldr+receiver+ftpsrv+shadowmountplus.
 - **Audit SSOT:** `audit_full.py` lee `data/cache/ps5/installed_pkgs.json` (fallback legacy raíz).
-- **Docs:** ARIA marcado ARCHIVED/WONTFIX (IDM manda en WAN); README sincronizado a 70 tests / 7 suites.
+- **Docs:** ARIA marcado ARCHIVED/WONTFIX (IDM manda en WAN); README sincronizado al conteo real de la suite.
 - **Fail-closed real:** `triggerPkgInstall` solo acepta `ok===true`/`status success|ok`; cualquier otro JSON es rechazo (cierra falso positivo `{"message":...}` y escalares).
-- **Multipart con ciclo de vida:** extractor distingue `retryable` (partes pendientes, padding `part01→part02`, contigüidad 1..max) y el daemon ya no manda incompletos a `.failed`; Zip Slip recursivo con `realpath` (73/73 tests).
+- **Multipart con ciclo de vida:** extractor distingue `retryable` (partes pendientes, padding `part01→part02`, contigüidad 1..max) y el daemon ya no manda incompletos a `.failed`; Zip Slip recursivo con `realpath`.
+- **`7z l` no trata toda falla como retryable (P1):** solo `Missing volume` en stdout/stderr devuelve `retryable: true`; cualquier otro código de salida o `listProc.error` (cabecera RAR corrupta, archivo multipart inválido, 7-Zip roto) es permanente y va a `.failed`. Antes cualquier `status !== 0` se interpretaba como "faltan partes" y un RAR corrupto reintentaba eternamente bloqueando la carpeta.
+- **Cleanup parcial ya no se reporta como éxito (P2):** `cleanupArchiveVolumes` retorna `{ ok, deleted, failed }` procesando volumen por volumen (un `unlinkSync` fallido no aborta el resto); `handleArchiveSuccess` propaga el reporte y `processPendingArchives` loguea `quedaron volúmenes sin borrar` en vez de `volúmenes eliminados` cuando `failed.length > 0`.
+- **README/CHANGELOG:** sincronizados a 81 tests / 7 suites.
 
 ## [1.2.0] - 2026-10-04
 
