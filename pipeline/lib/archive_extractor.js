@@ -1,9 +1,7 @@
 /**
  * @file archive_extractor.js
- * @description Extractor automático y resiliente de archivos comprimidos (RAR/ZIP)
- *   para el pipeline de juegos PS4/PS5 usando 7-Zip o UnRAR con auto-detección
- *   de contraseña (DLPSGAME.COM, etc.) y manejo de archivos multi-parte.
- * SRP < 300L. Cero dependencias externas.
+ * @description Extractor RAR/ZIP con 7-Zip/UnRAR, auto-password
+ *   (DLPSGAME.COM, etc.) y multi-parte. SRP < 300L. Cero dependencias.
  */
 'use strict';
 
@@ -20,11 +18,7 @@ const UNRAR_EXE = cfg.paths.winrarExe ? path.join(path.dirname(cfg.paths.winrarE
 const PASSWORDS = cfg.archivePasswords || ['DLPSGAME.COM', 'hako', 'downloadgameps3.com'];
 const TAG = 'EXTRACTOR';
 
-/**
- * Detecta si un archivo es parte de un archivo multi-volumen.
- * @param {string} filename
- * @returns {{ isMultiPart: boolean, partNum: number, basePattern: string|null }}
- */
+/** Detecta multi-volumen: `Base.part<N>.rar` → { isMultiPart, partNum, basePattern }. */
 function inspectMultiPart(filename) {
   const match = filename.match(/^(.*?)\.part(\d+)\.rar$/i);
   if (match) {
@@ -35,6 +29,13 @@ function inspectMultiPart(filename) {
     };
   }
   return { isMultiPart: false, partNum: 0, basePattern: null };
+}
+
+/** Matcher exacto del mismo multipart: exige `.part<numero>.rar` con igual base (case-insensitive). */
+function isSameMultipartVolume(file, basePattern) {
+  const m = file.match(/\.part\d+\.rar$/i);
+  if (!m) return false;
+  return file.slice(0, -m[0].length).toLowerCase() === basePattern.toLowerCase();
 }
 
 /**
@@ -163,7 +164,7 @@ function extractArchive(archivePath, outDir, logFile) {
     const dir = path.dirname(archivePath);
     if (multi.isMultiPart && multi.basePattern) {
       for (const f of fs.readdirSync(dir)) {
-        if (f.toLowerCase().startsWith(multi.basePattern.toLowerCase()) && f.toLowerCase().endsWith('.rar')) {
+        if (isSameMultipartVolume(f, multi.basePattern)) {
           try { totalArchiveBytes += fs.statSync(path.join(dir, f)).size; } catch {}
         }
       }
@@ -260,7 +261,7 @@ function cleanupArchiveVolumes(archivePath, logFile) {
     try {
       const files = fs.readdirSync(dir);
       for (const file of files) {
-        if (file.toLowerCase().startsWith(multi.basePattern.toLowerCase()) && file.toLowerCase().endsWith('.rar')) {
+        if (isSameMultipartVolume(file, multi.basePattern)) {
           const p = path.join(dir, file);
           fs.unlinkSync(p);
           logPs5(TAG, `🧹 Volumen eliminado para liberar disco: ${file}`, logFile);
@@ -285,5 +286,6 @@ module.exports = {
   extractArchive,
   cleanupArchiveVolumes,
   inspectMultiPart,
+  isSameMultipartVolume,
   getExtractorTool,
 };

@@ -14,7 +14,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { getPs5Config } = require('../lib/config.js');
-const { extractArchive: extractArchiveHardened } = require('../lib/archive_extractor.js');
+const { extractArchive: extractArchiveHardened, cleanupArchiveVolumes } = require('../lib/archive_extractor.js');
 const pkgRules = require('../lib/pkg_rules.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
@@ -102,6 +102,16 @@ function listPkgs() {
   return out;
 }
 
+/**
+ * Limpieza post-éxito: borra TODO el conjunto multipart con matcher exacto
+ * (no solo el volumen que disparó la extracción). Función de producción
+ * ejercitada por daemon_cleanup.test.js.
+ * @param {string} archivePath
+ */
+function handleArchiveSuccess(archivePath) {
+  cleanupArchiveVolumes(archivePath, cfg.state.logFile);
+}
+
 function processPendingArchives() {
   if (!fs.existsSync(cfg.paths.watchDir)) return;
   const quarantine = path.join(cfg.paths.stagingDir, '_quarantine');
@@ -152,9 +162,12 @@ function processPendingArchives() {
       continue;
     }
     // 7z/WinRAR solo salen con código 0 cuando el CRC de TODO el archivo pasó: éxito verificado.
+    // Borra el conjunto multipart completo (matcher exacto .partN.rar): si solo
+    // se borrara el volumen disparador, part02/part03 quedarían huérfanos y el
+    // siguiente ciclo entraría en retryable esperando un part01 ya eliminado.
     try {
-      fs.unlinkSync(fullPath);
-      logPs5(TAG, `Extraído y verificado (comprimido eliminado): ${file}`, cfg.state.logFile);
+      handleArchiveSuccess(fullPath);
+      logPs5(TAG, `Extraído y verificado (volúmenes eliminados): ${file}`, cfg.state.logFile);
       notifyTg(`📦 <b>Juego Extraído y Listo:</b>\n• <code>${file}</code>\n• Preparando para enviar a PS5.`);
     } catch {
       logPs5(TAG, `Extraído, pero no se pudo borrar el comprimido: ${file}`, cfg.state.logFile);
@@ -256,7 +269,11 @@ async function main() {
   }, 30000);
 }
 
-main().catch((err) => {
-  console.error(`[PS5 DAEMON] ERROR FATAL: ${err.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`[PS5 DAEMON] ERROR FATAL: ${err.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = { processPendingArchives, processLoosePkgs, extractArchive, handleArchiveSuccess, cycle };
