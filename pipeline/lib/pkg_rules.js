@@ -103,8 +103,14 @@ function planInstallOrder(pkgPaths, installedBasenames) {
   const held = [];
   const groups = groupByTitle(unique);
 
+const HELD_TITLES = new Set(['CUSA32836']); // Naruto retenido por orden del usuario para no saturar SSD
+
   for (const id of [...groups.keys()].sort()) {
     const files = /** @type {string[]} */ (groups.get(id)).slice().sort();
+    if (HELD_TITLES.has(id)) {
+      for (const file of files) held.push({ file, reason: 'retenido por orden del usuario (pausado hasta liberar SSD)' });
+      continue;
+    }
     // IDs UNKNOWN: sin Title ID no hay cascada que esperar — se planifican tal cual.
     if (id.startsWith('UNKNOWN_')) {
       plan.push(...files);

@@ -9,9 +9,9 @@ import ftplib
 PS5_IP = "192.168.2.2"
 FTP_PORT = 2121
 TARGET_DIRS = [
-    "/user/download/NPXS40140",
-    "/user/download/CUSA43942",
-    "/user/download/CUSA57220"
+    "/user/download/CUSA28561",
+    "/user/addcont/CUSA00900/SPEXPANSIONDLC03",
+    "/user/addcont/CUSA00900"
 ]
 
 def parse_list(lines):

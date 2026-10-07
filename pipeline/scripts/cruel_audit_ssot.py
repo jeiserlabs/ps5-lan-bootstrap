@@ -31,8 +31,12 @@ TITLE_NAMES = {
     "SLUG51851": "Carritos N64",
     "CUSA03173": "Bloodborne",
     "CUSA34384": "God of War Ragnarök",
-    "CUSA01967": "Horizon Zero Dawn",
-    "CUSA17722": "Marvel's Spider-Man: Miles Morales"
+    "CUSA01967": "Horizon Zero Dawn (USA)",
+    "CUSA10213": "Horizon Zero Dawn: Complete Edition (EUR)",
+    "CUSA17722": "Marvel's Spider-Man: Miles Morales (USA)",
+    "CUSA17776": "Marvel's Spider-Man: Miles Morales (EUR)",
+    "CUSA57220": "EA SPORTS FC 27",
+    "CUSA32836": "Naruto x Boruto Ultimate Ninja STORM CONNECTIONS"
 }
 
 def parse_ftp_list(lines):
