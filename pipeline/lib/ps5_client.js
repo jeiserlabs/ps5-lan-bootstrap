@@ -101,15 +101,16 @@ async function triggerPkgInstall(ip, installPort = 12800, fileUrl, filename, tim
   try {
     const data = JSON.parse(res.body);
     if (typeof data === 'object' && data !== null) {
-      if (data.ok === false || data.status === 'error' || data.status === 'fail' || data.error) {
-        return { ok: false, error: data.error || data.message || 'ps5_install_rejected', data };
-      }
+      // Fail-closed: solo la allowlist explícita es éxito. Cualquier otro
+      // objeto (p. ej. {"message":"installation failed"}) es rechazo.
       if (data.ok === true || data.status === 'success' || data.status === 'ok') {
         return { ok: true, data };
       }
-      return { ok: !data.error, data };
+      return { ok: false, error: data.error || data.message || 'ps5_install_rejected', data };
     }
-    return { ok: true, data };
+    // JSON escalar ("ok", 1, true...): solo vale el éxito textual explícito.
+    const ok = isExplicitSuccess(String(data));
+    return { ok, raw: res.body, error: ok ? undefined : 'invalid_response_body' };
   } catch {
     const ok = isExplicitSuccess(res.body);
     return { ok, raw: res.body, error: ok ? undefined : 'invalid_response_body' };

@@ -67,7 +67,35 @@ test('extractArchive — Fail-fast si part2 está ausente en disco', () => {
     fs.writeFileSync(fakePart1, 'dummy');
     const res = extractArchive(fakePart1, tmpDir);
     assert.equal(res.success, false);
+    assert.equal(res.retryable, true);
     assert.match(res.error, /part2 ausente/i);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('extractArchive — Preserva padding part01 → part02 y marca retryable', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'arch_test_'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'test_game.part01.rar'), 'dummy');
+    const res = extractArchive(path.join(tmpDir, 'test_game.part01.rar'), tmpDir);
+    assert.equal(res.success, false);
+    assert.equal(res.retryable, true);
+    assert.match(res.error, /part02/i);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('extractArchive — Hueco intermedio (part01+part03 sin part02) es retryable', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'arch_test_'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'test_game.part01.rar'), 'dummy');
+    fs.writeFileSync(path.join(tmpDir, 'test_game.part03.rar'), 'dummy');
+    const res = extractArchive(path.join(tmpDir, 'test_game.part01.rar'), tmpDir);
+    assert.equal(res.success, false);
+    assert.equal(res.retryable, true);
+    assert.match(res.error, /part02/i);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

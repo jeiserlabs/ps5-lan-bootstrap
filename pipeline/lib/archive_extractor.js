@@ -38,6 +38,30 @@ function inspectMultiPart(filename) {
 }
 
 /**
+ * Lista recursiva de archivos (rutas relativas) bajo un directorio.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+function listFilesRecursive(dir) {
+  const out = [];
+  const walk = (cur, rel) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(cur, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const relP = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(cur, e.name), relP);
+      else out.push(relP);
+    }
+  };
+  walk(dir, '');
+  return out;
+}
+
+/**
  * Busca ejecutables válidos de descompresión.
  * @returns {string|null} '7z' o 'unrar'
  */
@@ -48,11 +72,25 @@ function getExtractorTool() {
 }
 
 /**
+ * Nombre de volumen con el mismo ancho de padding que el part1
+ * (part01 → part02, part001 → part002, part1 → part2).
+ * @param {string} basePattern
+ * @param {number} num
+ * @param {number} width
+ * @returns {string}
+ */
+function formatPartName(basePattern, num, width) {
+  return `${basePattern}.part${String(num).padStart(width, '0')}.rar`;
+}
+
+/**
  * Extrae un archivo comprimido a una carpeta destino.
+ * Estados: success=true (listo) | success=false + retryable=true (esperar
+ * partes, NO mandar a .failed) | success=false sin retryable (permanente).
  * @param {string} archivePath Ruta completa al archivo .rar o .zip
  * @param {string} outDir Directorio donde se extraerán los archivos
  * @param {string} [logFile]
- * @returns {{ success: boolean, extractedFiles: string[], error?: string }}
+ * @returns {{ success: boolean, retryable?: boolean, extractedFiles: string[], error?: string }}
  */
 function extractArchive(archivePath, outDir, logFile) {
   const tool = getExtractorTool();
@@ -66,17 +104,45 @@ function extractArchive(archivePath, outDir, logFile) {
   let targetArchive = archivePath;
   if (multi.isMultiPart) {
     const dir = path.dirname(archivePath);
-    const p1 = path.join(dir, `${multi.basePattern}.part1.rar`);
-    const p01 = path.join(dir, `${multi.basePattern}.part01.rar`);
-    const part1Path = fs.existsSync(p1) ? p1 : (fs.existsSync(p01) ? p01 : null);
+    // Ancho del padding tomado del propio nombre (part01 → 2, part1 → 1).
+    const widthMatch = path.basename(archivePath).match(/\.part(0*\d+)\.rar$/i);
+    const width = widthMatch ? widthMatch[1].length : 1;
+    // Acepta cualquier ancho ya descargado para el volumen 1.
+    let part1Path = null;
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        const m = f.match(/\.part(0*)1\.rar$/i);
+        if (m && f.slice(0, -m[0].length).toLowerCase() === multi.basePattern.toLowerCase()) {
+          part1Path = path.join(dir, f);
+          break;
+        }
+      }
+    } catch {}
     if (!part1Path) {
-      return { success: false, extractedFiles: [], error: 'Ignorando: no es el volumen part1 (part1 ausente).' };
+      return { success: false, retryable: true, extractedFiles: [], error: 'Ignorando: no es el volumen part1 (part1 ausente, esperando partes).' };
     }
     targetArchive = part1Path;
 
-    const part2Name = path.basename(targetArchive).replace(/\.part0*1\.rar$/i, '.part2.rar');
-    if (!fs.existsSync(path.join(dir, part2Name))) {
-      return { success: false, extractedFiles: [], error: 'Volúmenes incompletos: part2 ausente.' };
+    // Inventario de volúmenes presentes y verificación de contigüidad 1..max.
+    let present = new Set();
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        const m = f.match(/\.part(0*)(\d+)\.rar$/i);
+        if (m && f.slice(0, -m[0].length).toLowerCase() === multi.basePattern.toLowerCase()) {
+          present.add(parseInt(m[2], 10));
+        }
+      }
+    } catch {}
+    const maxVol = present.size ? Math.max(...present) : 1;
+    for (let n = 1; n <= maxVol; n++) {
+      if (!present.has(n)) {
+        const missing = formatPartName(multi.basePattern, n, width);
+        return { success: false, retryable: true, extractedFiles: [], error: `Volúmenes incompletos: part${n} ausente — ${missing} (esperando partes restantes).` };
+      }
+    }
+    if (maxVol < 2) {
+      const missing = formatPartName(multi.basePattern, 2, width);
+      return { success: false, retryable: true, extractedFiles: [], error: `Volúmenes incompletos: part2 ausente — ${missing} (esperando partes restantes).` };
     }
 
     if (tool === '7z') {
@@ -86,7 +152,7 @@ function extractArchive(archivePath, outDir, logFile) {
         timeout: 5000,
       });
       if (listProc.status !== 0 || (listProc.stdout && listProc.stdout.includes('Missing volume'))) {
-        return { success: false, extractedFiles: [], error: 'Volúmenes incompletos: faltan partes restantes.' };
+        return { success: false, retryable: true, extractedFiles: [], error: 'Volúmenes incompletos: faltan partes restantes (esperando descarga).' };
       }
     }
   }
@@ -120,7 +186,7 @@ function extractArchive(archivePath, outDir, logFile) {
     fs.mkdirSync(outDir, { recursive: true });
   }
 
-  const beforeFiles = new Set(fs.readdirSync(outDir));
+  const beforeFiles = new Set(listFilesRecursive(outDir));
   let extractedOk = false;
   let usedPassword = '';
 
@@ -157,13 +223,19 @@ function extractArchive(archivePath, outDir, logFile) {
 
   logPs5(TAG, `🔓 Descompresión exitosa de ${path.basename(archivePath)} (pwd: ${usedPassword})`, logFile);
 
-  const afterFiles = fs.readdirSync(outDir);
+  const afterFiles = listFilesRecursive(outDir);
   const newFiles = [];
-  for (const f of afterFiles) {
-    if (beforeFiles.has(f)) continue;
-    const fullPath = path.join(outDir, f);
-    if (!isPathInside(outDir, fullPath)) {
-      const escapeErr = `ALERTA DE SEGURIDAD (Zip Slip): archivo fuera de outDir: ${fullPath}`;
+  for (const rel of afterFiles) {
+    if (beforeFiles.has(rel)) continue;
+    const fullPath = path.join(outDir, rel);
+    // realpath: si el extraído es (o cuelga de) un symlink/junction que
+    // apunta fuera, se detecta aunque path.resolve no lo vea.
+    let effective = fullPath;
+    try { effective = fs.realpathSync(fullPath); } catch {}
+    let outReal = outDir;
+    try { outReal = fs.realpathSync(outDir); } catch {}
+    if (!isPathInside(outReal, effective)) {
+      const escapeErr = `ALERTA DE SEGURIDAD (Zip Slip): archivo fuera de outDir: ${rel}`;
       logPs5(TAG, `🚨 ${escapeErr}`, logFile);
       try { fs.unlinkSync(fullPath); } catch {}
       return { success: false, extractedFiles: [], error: escapeErr };

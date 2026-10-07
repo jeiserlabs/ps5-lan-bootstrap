@@ -128,5 +128,12 @@ test('PS5 Integration Mock — Ejecuta cliente de PRODUCCIÓN (ps5_client.js) co
     state.payloadResponse = null;
   });
 
+  await t.test('9. Fail-Closed: triggerPkgInstall() rechaza JSON sin ok explícito ({"message":...})', async () => {
+    state.installResponse = JSON.stringify({ message: 'installation failed' });
+    const result = await triggerPkgInstall(ip, port, 'http://dummy.pkg', 'dummy.pkg');
+    assert.equal(result.ok, false);
+    state.installResponse = null;
+  });
+
   await new Promise((resolve) => server.close(resolve));
 });

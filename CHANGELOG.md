@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Watchdog elfldr 9021:** `repairCycle` relanza `elfldr-ps5.elf` y la salud exige 12800+2121+9021; autoload canónico exige kstuff+elfldr+receiver+ftpsrv+shadowmountplus.
 - **Audit SSOT:** `audit_full.py` lee `data/cache/ps5/installed_pkgs.json` (fallback legacy raíz).
 - **Docs:** ARIA marcado ARCHIVED/WONTFIX (IDM manda en WAN); README sincronizado a 70 tests / 7 suites.
+- **Fail-closed real:** `triggerPkgInstall` solo acepta `ok===true`/`status success|ok`; cualquier otro JSON es rechazo (cierra falso positivo `{"message":...}` y escalares).
+- **Multipart con ciclo de vida:** extractor distingue `retryable` (partes pendientes, padding `part01→part02`, contigüidad 1..max) y el daemon ya no manda incompletos a `.failed`; Zip Slip recursivo con `realpath` (73/73 tests).
 
 ## [1.2.0] - 2026-10-04
 

@@ -63,13 +63,17 @@ function saveInstalled(installed) {
  * @param {string} archivePath
  * @returns {boolean}
  */
+/**
+ * @param {string} archivePath
+ * @returns {{ success: boolean, retryable?: boolean }}
+ */
 function extractArchive(archivePath) {
   const destDir = cfg.paths.libraryDirs[0];
   const res = extractArchiveHardened(archivePath, destDir, cfg.state.logFile);
   if (!res.success && res.error) {
     logPs5(TAG, `Extracción rechazada: ${res.error}`, cfg.state.logFile);
   }
-  return res.success;
+  return { success: res.success, retryable: res.retryable };
 }
 
 /**
@@ -130,7 +134,14 @@ function processPendingArchives() {
     }
     if (Date.now() - stat.mtimeMs < 10000) continue; // aún escribiéndose
     logPs5(TAG, `Extrayendo: ${file}`, cfg.state.logFile);
-    if (!extractArchive(fullPath)) {
+    const extRes = extractArchive(fullPath);
+    if (!extRes.success) {
+      if (extRes.retryable) {
+        // Multipart incompleto: NO mandar a .failed; el resto de
+        // volúmenes aún está descargando y se reintenta cada ciclo.
+        logPs5(TAG, `⏳ Partes incompletas, esperando resto de volúmenes: ${file}`, cfg.state.logFile);
+        continue;
+      }
       const failed = `${fullPath}.failed`;
       try {
         fs.renameSync(fullPath, failed);
