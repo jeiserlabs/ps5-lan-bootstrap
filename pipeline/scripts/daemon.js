@@ -13,8 +13,8 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { getPs5Config } = require('../lib/config.js');
+const { extractArchive: extractArchiveHardened } = require('../lib/archive_extractor.js');
 const pkgRules = require('../lib/pkg_rules.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
@@ -57,38 +57,19 @@ function saveInstalled(installed) {
   fs.writeFileSync(INSTALLED_FILE, `${JSON.stringify(installed, null, 2)}\n`);
 }
 
-function findArchiveTool() {
-  if (fs.existsSync(cfg.paths.sevenZipExe)) return { exe: cfg.paths.sevenZipExe, kind: '7z' };
-  if (fs.existsSync(cfg.paths.winrarExe)) return { exe: cfg.paths.winrarExe, kind: 'winrar' };
-  return null;
-}
-
 /**
+ * Delega exclusivamente en el extractor endurecido (multipart fail-fast,
+ * espacio, timeout, Zip Slip). Una sola implementacion en produccion.
  * @param {string} archivePath
  * @returns {boolean}
  */
 function extractArchive(archivePath) {
-  const tool = findArchiveTool();
-  if (!tool) {
-    logPs5(TAG, 'No se encontró WinRAR ni 7-Zip. Configura PS5_WINRAR_EXE o PS5_7ZIP_EXE.', cfg.state.logFile);
-    return false;
-  }
   const destDir = cfg.paths.libraryDirs[0];
-  for (const password of [...cfg.archivePasswords, '']) {
-    try {
-      const args =
-        tool.kind === 'winrar'
-          ? ['x', '-y', password ? `-p${password}` : '-p-', archivePath, `${destDir}\\`]
-          : password
-            ? ['x', '-y', `-p${password}`, `-o${destDir}`, archivePath]
-            : ['x', '-y', `-o${destDir}`, archivePath];
-      execFileSync(tool.exe, args, { stdio: 'pipe', timeout: 3600000 });
-      return true;
-    } catch {
-      // contraseña incorrecta: se intenta la siguiente
-    }
+  const res = extractArchiveHardened(archivePath, destDir, cfg.state.logFile);
+  if (!res.success && res.error) {
+    logPs5(TAG, `Extracción rechazada: ${res.error}`, cfg.state.logFile);
   }
-  return false;
+  return res.success;
 }
 
 /**

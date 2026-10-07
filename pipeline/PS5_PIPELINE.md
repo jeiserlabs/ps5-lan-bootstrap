@@ -1,6 +1,6 @@
 # PS5 PIPELINE (CAVEMAN ULTRA)
 
-Pipeline PC→PS5: descargar (aria2c) → extraer → servir por LAN → instalar en consola jailbroken.
+Pipeline PC→PS5: descargar (IDM en WAN) → extraer → servir por LAN → instalar en consola jailbroken.
 Migrado desde el scratch de Antigravity (oct-2026) a hogar durable en este repo.
 Motor de descargas: **IDM en WAN** (aria2c purgado el 6-oct-2026 tras resolverse el BSOD con RNDIS6; `aria_pilot.js` queda como piloto alternativo, no vigente).
 
@@ -15,7 +15,7 @@ Motor de descargas: **IDM en WAN** (aria2c purgado el 6-oct-2026 tras resolverse
 | Watchdog barrido único | `node pipeline/scripts/kstuff_watchdog.js --once` |
 | Watchdog estado | `node pipeline/scripts/kstuff_watchdog.js --status` |
 | Autostart PC (manual) | `powershell -NoProfile -ExecutionPolicy Bypass -File pipeline/scripts/ps5_pc_autostart.ps1` |
-| Piloto de descargas aria2c (loop) | `npm run ps5:aria-pilot` |
+| Piloto de descargas aria2c (loop, archivado) | `npm run ps5:aria-pilot` |
 | Salud de enlaces firmados | `npm run ps5:links` |
 | Daemon extraer + instalar (loop) | `npm run ps5:daemon` |
 | Servidor LAN de PKGs | `npm run ps5:server` |
@@ -30,7 +30,7 @@ Motor de descargas: **IDM en WAN** (aria2c purgado el 6-oct-2026 tras resolverse
 | Reglas de PKG | `pipeline/lib/pkg_rules.js` | classifyPkg (BASE/UPDATE/DLC/FIX) + cascada por Title ID |
 | Cola | `pipeline/lib/queue_state.js` | estados (pending→injected→completed), backoff, reconciliación con disco |
 | Config | `pipeline/lib/config.js` | rutas/IPs/puertos SSOT + env `PS5_*` + `data/cache/ps5/config.json` |
-| Piloto | `pipeline/scripts/aria_pilot.js` | orquesta cola 1x1 en aria2c (:6800), crash-recovery, extracción y validación |
+| Piloto (archivado) | `pipeline/scripts/aria_pilot.js` | alternativa no vigente en aria2c (:6800); el flujo activo es IDM → daemon |
 | Daemon | `pipeline/scripts/daemon.js` | extrae .rar/.zip, clasifica, instala en cascada por 12800 |
 | Servidor | `pipeline/scripts/server.js` | `http://PC:9898/pkg/<archivo>` con Range + `/healthz` |
 | Sender ELF | `pipeline/scripts/send_elf.js` | payloads a elfldr (TCP 9021) |

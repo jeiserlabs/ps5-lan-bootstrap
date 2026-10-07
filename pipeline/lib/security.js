@@ -28,8 +28,9 @@ function sanitizeFilename(input) {
 }
 
 /**
- * Verifica matemáticamente si un path resuelto reside estrictamente dentro de un directorio padre.
- * Previene ataques de escape mediante symlinks o rutas relativas.
+ * Verifica si un path resuelto reside estrictamente dentro de un directorio padre.
+ * Cubre rutas relativas/escape textual; NO resuelve junctions/symlinks reales
+ * (P2 hardening pendiente: fs.realpath antes de comparar).
  * @param {string} parentDir
  * @param {string} targetPath
  * @returns {boolean}

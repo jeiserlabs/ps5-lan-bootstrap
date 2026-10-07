@@ -14,7 +14,7 @@ const { logPs5 } = require('../lib/pipeline_log.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
 const { sanitizeFilename } = require('../lib/security.js');
-const { ps5HttpGet } = require('../lib/ps5_client.js');
+const { ps5HttpGet, triggerPkgInstall } = require('../lib/ps5_client.js');
 const { sendTelegramMessage } = require('../lib/telegram.js');
 
 const cfg = getPs5Config();
@@ -184,13 +184,12 @@ async function installPkg(pkgPath, dryRun = false) {
   }
 
   const fileUrl = `http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/pkg/${encodeURIComponent(filename)}`;
-  const installUrl = `http://${cfg.ps5.ip}:${cfg.ps5.installPort}/install?url=${encodeURIComponent(fileUrl)}&name=${encodeURIComponent(filename)}`;
 
   logPs5(TAG, `Inyectando comando a PS5 port 12800...`, LOG_FILE);
-  const trigger = await httpGet(installUrl, 10000);
+  const trigger = await triggerPkgInstall(cfg.ps5.ip, cfg.ps5.installPort, fileUrl, filename, 10000);
 
-  if (!trigger || !trigger.body.toLowerCase().includes('ok')) {
-    logPs5(TAG, `❌ Error en respuesta de PS5 al enviar ${filename}: ${trigger ? trigger.body : 'timeout'}`, LOG_FILE);
+  if (!trigger || !trigger.ok) {
+    logPs5(TAG, `❌ Error en respuesta de PS5 al enviar ${filename}: ${trigger ? (trigger.error || JSON.stringify(trigger.data || trigger.raw || '')) : 'timeout'}`, LOG_FILE);
     return false;
   }
 
