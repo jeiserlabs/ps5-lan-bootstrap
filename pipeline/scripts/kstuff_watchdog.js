@@ -151,7 +151,7 @@ async function ensureAutoloadConfig(log) {
   } catch {
     return false;
   }
-  const hasCore = /kstuff/i.test(list) && /pkg-receiver/i.test(list) && /ftpsrv/i.test(list);
+  const hasCore = /kstuff/i.test(list) && /pkg-receiver/i.test(list) && /ftpsrv/i.test(list) && /elfldr/i.test(list);
   if (hasCore) return true;
 
   // Reintento de lectura antes de escribir: evita pisar config buena por una respuesta cortada.
@@ -161,7 +161,7 @@ async function ensureAutoloadConfig(log) {
   try {
     retryList = String(JSON.parse((retry && retry.body) || '{}').AUTOLOAD_LIST || '');
   } catch {}
-  if (/kstuff/i.test(retryList) && /pkg-receiver/i.test(retryList) && /ftpsrv/i.test(retryList)) return true;
+  if (/kstuff/i.test(retryList) && /pkg-receiver/i.test(retryList) && /ftpsrv/i.test(retryList) && /elfldr/i.test(retryList)) return true;
 
   log('⚠️ AUTOLOAD_LIST incompleta o vacía en la consola. Restaurando canónica...');
   const set = await httpPostJson(`${PMGR}/set_config`, { AUTOLOAD_LIST: CANONICAL_AUTOLOAD });
@@ -276,7 +276,7 @@ async function repairCycle(state, log) {
   );
 
   const results = {};
-  for (const name of ['pkg-receiver.elf', 'ftpsrv-ps5.elf']) {
+  for (const name of ['elfldr-ps5.elf', 'pkg-receiver.elf', 'ftpsrv-ps5.elf']) {
     results[name] = await loadPayload(name);
     await sleep(4000);
   }
@@ -287,17 +287,17 @@ async function repairCycle(state, log) {
   const elfOk = await tcpOpen(cfg.ps5.ip, cfg.ps5.elfldrPort, 3000);
   saveState(state);
 
-  if (ok && ftpOk) {
-    log(`✅ Recuperación: pkg-receiver y ftpsrv responden (elfldr=${elfOk ? 'ok' : 'caído'}).`);
-    sendTelegramMessage('✅ <b>Watchdog PS5:</b> jailbreak y servicios LAN recuperados (12800 y 2121 activos).');
+  if (ok && ftpOk && elfOk) {
+    log('✅ Recuperación: pkg-receiver, ftpsrv y elfldr responden (12800, 2121 y 9021 ok).');
+    sendTelegramMessage('✅ <b>Watchdog PS5:</b> jailbreak y servicios LAN recuperados (12800, 2121 y 9021 activos).');
   } else {
-    log(`⚠️ Recuperación parcial: pkg-receiver=${ok ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'}.`);
+    log(`⚠️ Recuperación parcial: pkg-receiver=${ok ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'} elfldr=${elfOk ? 'ok' : 'CAÍDO'}.`);
     sendTelegramMessage(
-      `⚠️ <b>Watchdog PS5:</b> la reparación NO fue completa (pkg-receiver=${ok ? 'ok' : 'CAÍDO'}, ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'}).\n` +
+      `⚠️ <b>Watchdog PS5:</b> la reparación NO fue completa (pkg-receiver=${ok ? 'ok' : 'CAÍDO'}, ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'}, elfldr=${elfOk ? 'ok' : 'CAÍDO'}).\n` +
         'Si los juegos no abren: cerrar el juego y relanzar <b>WebKit Autoloader</b>.'
     );
   }
-  return ok && ftpOk;
+  return ok && ftpOk && elfOk;
 }
 
 async function sweep(state, log) {
@@ -343,10 +343,10 @@ async function sweep(state, log) {
   // 4) Blindaje del fix anti-pausa: SM+ con kstuff_game_auto_toggle=0 (requiere FTP)
   if (ftpOk) health.smConfig = await ensureSmConfig(log, state);
 
-  if (receiverOk && ftpOk) return health; // todo bien, silencio (elfldr es opcional)
+  if (receiverOk && ftpOk && elfOk) return health; // todo bien, silencio
 
   log(
-    `Salud degradada: pkg-receiver=${receiverOk ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'}`
+    `Salud degradada: pkg-receiver=${receiverOk ? 'ok' : 'CAÍDO'} ftpsrv=${ftpOk ? 'ok' : 'CAÍDO'} elfldr=${elfOk ? 'ok' : 'CAÍDO'}`
   );
   await repairCycle(state, log);
   return health;

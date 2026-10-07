@@ -1,7 +1,7 @@
 # ESTADO_VIVO — PIPELINE PS5 AUTONOMO (CAVEMAN ULTRA)
-ts: 2026-10-06T21:28:00-05:00
+ts: 2026-10-07T07:30:00-05:00
 host: PC Jeiser (Windows 11 AMD64)
-red_pc: Tether USB S23 Ultra (16 conexiones IDM) · 100% estable
+red_pc: Tether USB Redmi RNDIS6 10.0.26100.9444 (8 conn, 4 paralel) · lenta WAN, 0% BSOD
 lan_ps5: Ethernet directa 192.168.2.1 <-> 192.168.2.2 (1 Gbps OK)
 ps5_fw: 13.40 Slim · Autoloader 0.5.2 · kstuff 1.11 · pkg-receiver 12800 · ftpsrv 2121
 ssot: data/cache/ps5/installed_pkgs.json (38 verificados FTP)
@@ -23,5 +23,11 @@ daemons: server 9898 + kstuff_watchdog + daemon VIVOS
 * Huérfanos: 0. Residuos /user/download: 0.
 
 ## 3. BIBLIOTECA PC
-* E:\Biblioteca_Juegos_PS: HZD Update 1.54 (312.8M) esperando Base.
-* GOW Ragnarök purgado 100% de PC para instalar release castellano desde cero.
+* HZD CUSA10213: INSTALADO 100% PS5 (base+update verif FTP, borrado PC).
+* GOW CUSA34386: base+update6.05+Valhalla bajando IDM (tareas 35/36/37). DLC ALLDLC extraido y verificado: 4 PKG 0.5MB en E:\, esperan base.
+* Basura Desktop purgada (3 HTML + 1 failed). Discos C 601GB / E 418GB libres.
+* Respaldo sesion: SESION_2026-10-07_TETHER_REDM_BRIDGE.md (caveman ultra, append por mensaje).
+
+## 4. REGLA GLOBAL RESPALDO (anti-cierre CLI)
+* Tras cada mensaje: append 1 linea caveman ultra a SESION_2026-10-07_TETHER_REDM_BRIDGE.md (fecha+hecho).
+* Si CLI muere: leer ese .md = contexto vivo. Sin excepcion.
