@@ -17,7 +17,8 @@ SSOT: `data/cache/ps5/installed_pkgs.json` · Auditoría script: `pipeline/scrip
 | 10 | A Way Out | CUSA07995 | 15.81 GB | 0.11 GB | — | 100% FULL |
 | 11 | Crash Team Racing Nitro-Fueled | CUSA13795 | 12.59 GB | 7.94 GB | 3 | 100% FULL |
 | 12 | Haven | CUSA23384 | 4.62 GB (v1.06) | Integrado | — | 100% FULL |
+| 13 | NARUTO X BORUTO Ultimate Ninja STORM CONNECTIONS | CUSA32836 | 22.71 GB | 11.39 GB (v1.60) | 12 (13 packs) | 100% FULL |
 
-**Totales:** 12 juegos · bases ~486.94 GB · updates ~98.91 GB · 20 DLCs activos
-**Homebrew/otros:** ITEM00001 (Desconocido), NPXS39041, NPXS40172, SLUG51851 (Carritos N64)
-**Almacenamiento PS5:** 173.52 GB libres en SSD · /user/download limpio (0 bytes) · 0 fragmentos huérfanos
+**Totales:** 13 juegos · bases ~509.65 GB · updates ~110.30 GB · 32 DLCs activos
+**Homebrew/otros:** ITEM00001, NPXS39041, NPXS40172, SLUG51851, PKGS12800, WKAL00001
+**Almacenamiento PS5:** 132.14 GB libres en SSD · /user/download limpio (0 bytes) · 0 fragmentos huérfanos

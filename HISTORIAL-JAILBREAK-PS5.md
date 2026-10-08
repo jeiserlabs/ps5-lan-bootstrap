@@ -597,6 +597,24 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - Impacto neto en SSD PS5: ~12 GB (de 173.52 GB disponibles).
 - Respaldo persistido en el SSOT local: `ENLACES_VALHALLA_CUSA34388.md`.
 
+## 31. Sprint Exitoso: Naruto x Boruto STORM CONNECTIONS (CUSA32836), 13 Juegos 100% FULL y Uptime >125 Minutos (8-oct mediodía)
 
+**1. Despliegue de Naruto x Boruto Ultimate Ninja STORM CONNECTIONS (`CUSA32836`):**
+- **Juego Base (v1.00):** PKG de 22.71 GB (`EP0700-CUSA32836_00-A0100-V0100-CyB1K-[DLPSGAME.COM].pkg`) transmitido por LAN Gigabit a 113 MB/s vía `server.js` (:9898) hacia `pkg-receiver` (:12800). Consolidado 100% en `/user/app/CUSA32836/app.pkg` (24,383,848,448 bytes).
+- **Update v1.60:** PKG de 11.39 GB (`EP0700-CUSA32836_00-A0160-V0100-CyB1K-[DLPSGAME.COM].pkg`) inyectado y consolidado 100% en `/user/patch/CUSA32836/patch.pkg` (12,230,721,536 bytes).
+- **13 Packs de DLC (12 Carpetas de Entitlement Activas):**
+  - Descomprimidos desde `CUSA32836.DLC.Pack.v6-Arczi-CyB1K-[DLPSGAME.COM].rar`.
+  - Instalados y verificados en `/user/addcont/CUSA32836/`: `NUSANITMACCEORBS`, `NUSANCOSTEEN0000`, `NUSANCOSREALFACE`, `NUSANCOS4THNINKA`, `NUSANCHAHAGOROMO`, `NUSANCHAISSHIKI0`, `NUSANCHAKURENAI0`, `NUSANCHAKAWAKIKR`, `NUSANCHABORUTOMM`, `NUSANCOSANNI20TH` (unifica Costume Set y PreOrder Pack), `NUSANBGMANNIMEOP`, `NUSANCOSASICSCOL` (resuelto problema de buffer de longitud acortando nombre a `CUSA32836_DLC_ASICS.pkg`).
+  - Verificación FTP con `ac.pkg` íntegro en cada una de las 12 carpetas.
 
+**2. Optimización de Arquitectura y Pipeline:**
+- Desbloqueado `CUSA32836` de `HELD_TITLES` en `pipeline/lib/pkg_rules.js`.
+- Ampliado `RE_DLC` para clasificar deterministamente paquetes de escena con palabras clave (`costume`, `accessory`, `accessories`, `preorder`, `item(s)`).
+- Suite de pruebas unitarias al 100% (111/111 passing).
 
+**3. Gran Biblioteca Consolidada (13 Juegos 100% FULL COMPLETO):**
+- 13 juegos comerciales con sus updates y DLCs activos: GoW Ragnarök, Horizon Forbidden West, MLB The Show 24, Ghost of Tsushima DC, Horizon Zero Dawn CE, Marvel's Spider-Man, Miles Morales, GoW 2018, It Takes Two, A Way Out, Crash Team Racing Nitro-Fueled, Haven, Naruto x Boruto Connections.
+- Bases: ~509.65 GB · Updates: ~110.30 GB · 32 DLCs activos.
+- Almacenamiento PS5: 132.14 GB libres en SSD interno. `/user/download` limpio (0 bytes).
+- Estabilidad de la consola: Uptime continuo verificado **>125 minutos** sin kernel panics.
+- Limpieza en PC: PKG Base (22.71 GB), Update (11.39 GB), carpeta `NARUTO_DLCS` y archivo RAR purgados por completo del Desktop.

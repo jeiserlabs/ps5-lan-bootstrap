@@ -9,7 +9,7 @@ const path = require('node:path');
 
 const TITLE_ID_RE = /[A-Za-z]{4}\d{5}/;
 const RE_UPDATE = /(^|[^a-z])(update|upd)([^a-z]|$)|_patch|patch_|updatev|_a0*[1-9]\d*-|-a0*[1-9]\d*-/;
-const RE_DLC = /-a0000-|(^|[^a-z])(dlc(s)?|addon|seasonpass|season-pass|season pass|unlock|deluxe|valhalla|bonus|expansion)([^a-z]|$)/;
+const RE_DLC = /-a0000-|(^|[^a-z])(dlc(s)?|addon|seasonpass|season-pass|season pass|unlock|deluxe|valhalla|bonus|expansion|costume|accessory|accessories|preorder|item(s)?)([^a-z]|$)/;
 const RE_FIX = /(^|[^a-z])fix([^a-z]|$)|_fix|fix_|optionalfix/;
 const RE_MOD_BLOCK = /(^|[^a-z])mod([^a-z]|$)|unlock[_ .-]?all|all[_ .-]?unlock/;
 const RE_FULLGAME = /fullgame|full\.game/;
@@ -124,7 +124,7 @@ function planInstallOrder(pkgPaths, installedBasenames) {
   const held = [];
   const groups = groupByTitle(unique);
 
-const HELD_TITLES = new Set(['CUSA32836']); // Naruto retenido por orden del usuario para no saturar SSD
+const HELD_TITLES = new Set();
 
   for (const id of [...groups.keys()].sort()) {
     const files = /** @type {string[]} */ (groups.get(id)).slice().sort();
