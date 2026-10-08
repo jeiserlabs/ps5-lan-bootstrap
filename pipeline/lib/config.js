@@ -24,6 +24,14 @@ function loadArchivePasswords() {
   return [];
 }
 
+function resolveToolPath(preferred, alternates = []) {
+  if (preferred && fs.existsSync(preferred)) return preferred;
+  for (const alt of alternates) {
+    if (alt && fs.existsSync(alt)) return alt;
+  }
+  return preferred;
+}
+
 const defaultDesktop = process.env.PS5_DESKTOP || path.join(process.env.USERPROFILE || 'C:\\Users\\dev', 'Desktop');
 
 const DEFAULTS = {
@@ -42,8 +50,8 @@ const DEFAULTS = {
     stagingDir: path.join(ROOT, 'staging'),
     braveProfileDir: path.join(ROOT, 'data', 'browser_profiles', 'brave_aria_profile'),
     braveExe: 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
-    winrarExe: 'C:\\Program Files\\WinRAR\\WinRAR.exe',
-    sevenZipExe: 'C:\\Program Files\\7-Zip\\7z.exe',
+    winrarExe: resolveToolPath('C:\\Program Files\\WinRAR\\WinRAR.exe', ['C:\\Program Files (x86)\\WinRAR\\WinRAR.exe']),
+    sevenZipExe: resolveToolPath('C:\\Program Files\\7-Zip\\7z.exe', ['C:\\Program Files (x86)\\7-Zip\\7z.exe']),
   },
   queue: {
     pollMs: 30000,

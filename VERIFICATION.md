@@ -12,11 +12,11 @@ verificar aparece en la sección de límites, no como aprobado.
 
 ```
 $ node pipeline/tests/run_all.js
-ℹ tests 118
+ℹ tests 122
 ℹ suites 10
-ℹ pass 118
+ℹ pass 122
 ℹ fail 0
-ℹ duration_ms 753.7149
+ℹ duration_ms 852.0302
 ```
 
 Antes de este cambio: 92/92. Se añaden 16 tests (`pipeline/tests/ps5_compatibility.test.js`)

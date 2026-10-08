@@ -22,11 +22,12 @@ Este repo automatiza el montaje completo de un jailbreak **estable y offline** e
 | Lado | Qué |
 |---|---|
 | Consola | PS5 con FW **7.00–13.60** (7.00–12.00 puede además usar Poops 100% offline). **NUNCA 14.xx.** |
-| PC | Windows 10/11 · [Node.js 20+](https://nodejs.org) · cable Ethernet (directo o switch) |
+| PC | Windows 10/11 · [Node.js 20+](https://nodejs.org) · [Python 3.10+](https://python.org) · cable Ethernet (directo o switch) |
+| Herramientas PC | [7-Zip](https://7-zip.org) o WinRAR (para extracción de paquetes multipart en biblioteca) |
 | Red | LAN dedicada `192.168.2.0/24` (por defecto: PC `192.168.2.1`, PS5 `192.168.2.2`) |
-| Opcional | Python 3.10+ (solo para el host del exploit y las auditorías) · Telegram bot (avisos) |
+| Opcional | Telegram bot (para notificaciones remotas en móvil) |
 
-**Sin dependencias npm.** `git clone` y listo — todo es Node nativo + herramientas del sistema.
+**Cero dependencias npm externas.** Solo Node nativo, Python nativo y utilidades del sistema.
 
 ## 🚀 Inicio rápido
 
@@ -101,7 +102,7 @@ Desconecta la PS5 del PC cuando quieras: **la consola ya no lo necesita**. En ca
 | `npm run ps5:server` | Servidor LAN de PKGs (9898) |
 | `npm run ps5:send-elf -- x.elf` | Empujar un payload por elfldr (9021) |
 | `npm run ps5:daemon` / `ps5:aria-pilot` | Instalación/descargas automatizadas |
-| `npm test` | Suite de tests (118 tests / 10 suites, Node core-first, Playwright opcional) |
+| `npm test` | Suite de tests (122 tests / 10 suites, Node core-first, Playwright opcional) |
 
 ## 📦 Payloads incluidos (SHA256 verificados)
 

@@ -11,19 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auditoría del filtro contra el ledger real (`npm run ps5:compat`):** parsea `lan_installer.log`, agrupa estancamientos en clusters (±64 MB) y falla si algún título instalado con éxito queda bloqueado. El histograma separa el bug de reentrancia (~3.3 GB) del rechazo real del cliente (13.17 GB), que un "byte dominante" único ocultaba.
 - **Verificación de firmware de payloads:** `update_payloads.js` contrasta cada payload con `payloads/compatibility.json` contra `cfg.ps5.firmware` (nuevo, override `PS5_FIRMWARE`) y aborta con `--apply` si alguno no soporta el FW. El SHA256 solo probaba integridad. Añadida la entrada `webkit-autoloader` a la matriz.
 - **`VERIFICATION.md`:** evidencia de ejecución (tests, ledger, sonda real a la consola, límites declarados).
-- **16 tests nuevos** (`pipeline/tests/ps5_compatibility.test.js`): 108/108 en total, incluida la guarda anti-contaminación que impide bloquear los juegos que la auditoría FTP confirma instalados.
-- **Biblioteca PS5 100% Full Completa (12/12 títulos):** God of War Ragnarök (`CUSA34388`) consolidado con Base (90.55 GB) + Update v2.00 (19.56 GB) + 2 DLCs a 113 MB/s; God of War 2018 (`CUSA07408`) con Base + Update 1.34 + 8 DLCs; Ghost of Tsushima (`CUSA13323`) con Base v2.24 + DLC Director's Cut; Haven (`CUSA23384`) v1.06 integrado. 0 pendientes, 0 huérfanos. Consola con >68m uptime.
-- **Resolución Forense Crash 3 Minutos:** Purga de 20.8 GB de fragmentos `.dat` corruptos de BGFT en `/user/download` y retiro de etaHEN colapsante; consola estabilizada con cadena dorada minimalista y uptime continuo sin kernel panics.
+- **Hardening y Verificación Criptográfica (`payloads/manifest.json`):** Manifiesto confiable con releaseTag, assetName y SHA256 estricto para cada payload oficial. `--apply` ahora es estrictamente fail-closed (aborta si falta tag, asset o hash).
+- **Almacenamiento atómico (`pipeline/lib/installed_store.js`):** Escrituras atómicas con swap de archivos `.tmp` y fallback automático a `.bak` ante JSON corrupto o no-array (`{}` o `null`).
+- **Suite de Pruebas Extendida:** Suite sincronizada y verificada en tests 100% verde (incluye path traversal, compatibilidad, mock network, resiliencia atómica y updater criptográfico).
 
 ### Fixed
-- **Watchdog elfldr 9021:** `repairCycle` relanza `elfldr-ps5.elf` y la salud exige 12800+2121+9021; autoload canónico exige kstuff+elfldr+receiver+ftpsrv+shadowmountplus.
-- **Audit SSOT:** `audit_full.py` lee `data/cache/ps5/installed_pkgs.json` (fallback legacy raíz).
-- **Docs:** ARIA marcado ARCHIVED/WONTFIX (IDM manda en WAN); README sincronizado al conteo real de la suite.
-- **Fail-closed real:** `triggerPkgInstall` solo acepta `ok===true`/`status success|ok`; cualquier otro JSON es rechazo (cierra falso positivo `{"message":...}` y escalares).
-- **Multipart con ciclo de vida:** extractor distingue `retryable` (partes pendientes, padding `part01→part02`, contigüidad 1..max) y el daemon ya no manda incompletos a `.failed`; Zip Slip recursivo con `realpath`.
-- **`7z l` no trata toda falla como retryable (P1):** solo `Missing volume` en stdout/stderr devuelve `retryable: true`; cualquier otro código de salida o `listProc.error` (cabecera RAR corrupta, archivo multipart inválido, 7-Zip roto) es permanente y va a `.failed`. Antes cualquier `status !== 0` se interpretaba como "faltan partes" y un RAR corrupto reintentaba eternamente bloqueando la carpeta.
-- **Cleanup parcial ya no se reporta como éxito (P2):** `cleanupArchiveVolumes` retorna `{ ok, deleted, failed }` procesando volumen por volumen (un `unlinkSync` fallido no aborta el resto); `handleArchiveSuccess` propaga el reporte y `processPendingArchives` loguea `quedaron volúmenes sin borrar` en vez de `volúmenes eliminados` cuando `failed.length > 0`.
-- **README/CHANGELOG:** sincronizados a 81 tests / 7 suites.
+- **Seguridad y Privacidad:** Eliminación de topología interna (`ESTADO_VIVO.md`) del árbol público de Git (custodiado localmente en `.gitignore`).
+- **Resiliencia de Observabilidad:** `status.js` sincronizado para usar `loadInstalledList` con recuperación `.bak`.
+- **Requisitos reproducibles:** Declaración explícita de Node.js 20+, Python 3.10+ y 7-Zip/WinRAR en `README.md` (eliminada afirmación errónea de Python "opcional").
+- **Timeouts de red en Updater:** `fetchJson` y `downloadBuffer` blindados con timeout de 5s y límite máximo de descarga (50 MB).
 - **Blocklist de foros del informe externo NO se implementó como bloqueo:** CUSA13323, CUSA07408, CUSA28561, CUSA13795, CUSA16742 y CUSA20499 figuran como "incompatibles" en foros, pero la auditoría FTP demuestra que están instalados y funcionando en FW 13.40. Quedan como anotación informativa (`SCENE_REPORTS`); bloquearlos habría impedido incluso el parche de GoW 2018 que el informe pedía instalar.
 
 ## [1.2.0] - 2026-10-04

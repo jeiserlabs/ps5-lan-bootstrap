@@ -2,7 +2,7 @@
 /**
  * @file status.js
  * @description Estado unificado del pipeline PS5 en un solo comando: consola (elfldr +
- *   pkg-receiver), aria2c, cola de descargas, daemons vivos y biblioteca de PKGs.
+ *   pkg-receiver), IDM/aria, cola de descargas, daemons vivos y biblioteca de PKGs.
  *   Reemplaza a los ~140 scripts sueltos del scratch de Antigravity.
  * Uso: node scripts/ps5/status.js [--json]
  * SRP < 300L.
@@ -14,6 +14,7 @@ const net = require('node:net');
 const { getPs5Config } = require('../lib/config.js');
 const queueState = require('../lib/queue_state.js');
 const { readAlivePid } = require('../lib/pidfile.js');
+const { loadInstalledList } = require('../lib/installed_store.js');
 
 const cfg = getPs5Config();
 
@@ -125,12 +126,7 @@ async function collect() {
 
   const state = queueState.loadState(path.join(cfg.state.cacheDir, 'queue_state.json'));
   const installedFile = path.join(cfg.state.cacheDir, 'installed_pkgs.json');
-  let installedCount = 0;
-  try {
-    installedCount = JSON.parse(fs.readFileSync(installedFile, 'utf8')).length;
-  } catch {
-    installedCount = 0;
-  }
+  const installedCount = loadInstalledList(installedFile).length;
 
   const daemons = {
     aria_pilot: readAlivePid(path.join(cfg.state.cacheDir, 'aria_pilot.pid')),

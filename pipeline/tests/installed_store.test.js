@@ -59,4 +59,18 @@ test('Installed Store — Persistencia Atómica y Resiliencia', async (t) => {
     assert.ok(Array.isArray(recovered));
     assert.ok(recovered.length > 0);
   });
+
+  await t.test('6. Recupera desde .bak si el archivo principal es {} (no-array)', () => {
+    fs.writeFileSync(storeFile, '{}', 'utf8');
+    const recovered = loadInstalledList(storeFile);
+    assert.ok(Array.isArray(recovered));
+    assert.equal(recovered.length, 3);
+  });
+
+  await t.test('7. Recupera desde .bak si el archivo principal es null o primitivo', () => {
+    fs.writeFileSync(storeFile, 'null', 'utf8');
+    const recovered = loadInstalledList(storeFile);
+    assert.ok(Array.isArray(recovered));
+    assert.equal(recovered.length, 3);
+  });
 });

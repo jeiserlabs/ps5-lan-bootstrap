@@ -1,0 +1,38 @@
+{
+  "kstuff.elf": {
+    "repo": "EchoStretch/kstuff-lite",
+    "releaseTag": "v1.11",
+    "assetName": "kstuff.elf",
+    "sha256": "ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779"
+  },
+  "ftpsrv-ps5.elf": {
+    "repo": "ps5-payload-dev/ftpsrv",
+    "releaseTag": "v0.21.1",
+    "assetName": "ftpsrv-ps5.elf",
+    "sha256": "7d4b31c83eae4e056580482a3a074e1db25922efc74ac1e439473b45d71a5938"
+  },
+  "elfldr-ps5.elf": {
+    "repo": "ps5-payload-dev/elfldr",
+    "releaseTag": "v0.26",
+    "assetName": "elfldr-ps5.elf",
+    "sha256": "ed6d587a057c09d6a95b2176e336d9ffc605e547ac56462128b029e47b8ccea1"
+  },
+  "shadowmountplus.elf": {
+    "repo": "drakmor/ShadowMountPlus",
+    "releaseTag": "v1.7b3",
+    "assetName": "shadowmountplus.elf",
+    "sha256": "2a7427e20ba7a70bd8cd01e47eb00ee7ca82db82dff3da7884f48f9c3fcbe95a"
+  },
+  "pkg-receiver.elf": {
+    "repo": "Loopayeh/pkg-receiver",
+    "releaseTag": "v1.0.0",
+    "assetName": "pkg-receiver.elf",
+    "sha256": "6946d52c6c04a3f43d3141a505394ba8e0c6923f17fe471054e11567c9a526c7"
+  },
+  "webkit-autoloader-installer_v0.5.2.elf": {
+    "repo": "itsPLK/ps5-webkit-autoloader",
+    "releaseTag": "v0.5.2",
+    "assetName": "webkit-autoloader-installer_v0.5.2.elf",
+    "sha256": "f990e48e8330231d2066a7b8ab6dc25fda83b2cc36cb426c472b35b33767451a"
+  }
+}

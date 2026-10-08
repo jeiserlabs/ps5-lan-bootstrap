@@ -6,6 +6,8 @@
 *.key
 .passwords
 SESION_*.md
+ESTADO_VIVO.md
+CTX_ULTIMO.md
 
 # Runtime, logs, and processes
 *.pid

@@ -17,47 +17,65 @@ const { getPs5Config } = require('../lib/config.js');
 const { loadPayloadCompatibility, checkPayloadFirmware } = require('../lib/ps5_compatibility.js');
 
 const REPOS = [
-  { name: 'kstuff.elf', repo: 'EchoStretch/kstuff-lite', pattern: /\.elf$/i },
-  { name: 'ftpsrv-ps5.elf', repo: 'ps5-payload-dev/ftpsrv', pattern: /ftpsrv.*\.elf$/i },
-  { name: 'shadowmountplus.elf', repo: 'drakmor/ShadowMountPlus', pattern: /shadowmount.*\.elf$/i },
-  { name: 'webkit-autoloader', repo: 'itsPLK/ps5-webkit-autoloader', pattern: /\.elf$/i },
-  { name: 'pkg-receiver.elf', repo: 'Loopayeh/pkg-receiver', pattern: /\.elf$/i },
+  { name: 'kstuff.elf', repo: 'EchoStretch/kstuff-lite' },
+  { name: 'ftpsrv-ps5.elf', repo: 'ps5-payload-dev/ftpsrv' },
+  { name: 'shadowmountplus.elf', repo: 'drakmor/ShadowMountPlus' },
+  { name: 'webkit-autoloader-installer_v0.5.2.elf', repo: 'itsPLK/ps5-webkit-autoloader' },
+  { name: 'pkg-receiver.elf', repo: 'Loopayeh/pkg-receiver' },
 ];
 
-function downloadBuffer(url) {
+function loadPayloadManifest(manifestPath) {
+  const p = manifestPath || path.join(__dirname, '..', '..', 'payloads', 'manifest.json');
+  try {
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {}
+  return {};
+}
+
+function downloadBuffer(url, timeoutMs = 5000, maxBytes = 50 * 1024 * 1024) {
   return new Promise((resolve) => {
     const opts = {
       headers: {
         'User-Agent': 'ps5-lan-bootstrap-updater',
         Accept: 'application/octet-stream',
       },
+      timeout: timeoutMs,
     };
-    https
-      .get(url, opts, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          const loc = res.headers.location;
-          if (loc) return downloadBuffer(loc).then(resolve);
+    const req = https.get(url, opts, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        const loc = res.headers.location;
+        if (loc) return downloadBuffer(loc, timeoutMs, maxBytes).then(resolve);
+      }
+      if (res.statusCode !== 200) return resolve(null);
+      const chunks = [];
+      let totalBytes = 0;
+      res.on('data', (c) => {
+        totalBytes += c.length;
+        if (totalBytes > maxBytes) {
+          req.destroy();
+          return resolve(null);
         }
-        if (res.statusCode !== 200) return resolve(null);
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      })
-      .on('error', () => resolve(null));
+        chunks.push(c);
+      });
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
   });
 }
 
-function fetchJson(url) {
+function fetchJson(url, timeoutMs = 5000) {
   return new Promise((resolve) => {
     const opts = {
       headers: {
         'User-Agent': 'ps5-lan-bootstrap-updater',
-        'Accept': 'application/vnd.github.v3+json'
-      }
+        Accept: 'application/vnd.github.v3+json',
+      },
+      timeout: timeoutMs,
     };
-    https.get(url, opts, (res) => {
+    const req = https.get(url, opts, (res) => {
       let body = '';
-      res.on('data', chunk => body += chunk);
+      res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try {
           resolve({ status: res.statusCode, data: JSON.parse(body) });
@@ -65,7 +83,9 @@ function fetchJson(url) {
           resolve({ status: res.statusCode, data: null });
         }
       });
-    }).on('error', () => resolve({ status: 500, data: null }));
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 504, data: null }); });
+    req.on('error', () => resolve({ status: 500, data: null }));
   });
 }
 
@@ -138,6 +158,7 @@ async function checkPayloadUpdates(dryRun = true, opts = {}) {
   const payloadDir = path.join(__dirname, '..', '..', 'payloads');
   const consoleFw = opts.consoleFw || getPs5Config().ps5.firmware;
   const matrix = loadPayloadCompatibility(opts.compatPath);
+  const manifest = opts.manifest || loadPayloadManifest(opts.manifestPath);
   const blocked = [];
 
   for (const item of REPOS) {
@@ -154,22 +175,22 @@ async function checkPayloadUpdates(dryRun = true, opts = {}) {
     const publishedAt = release.published_at ? release.published_at.split('T')[0] : 'N/A';
     const localFile = path.join(payloadDir, item.name);
     const localHash = getLocalFileHash(localFile);
+    const entry = manifest[item.name];
+    const targetAssetName = entry ? entry.assetName : null;
 
     console.log(`📦 ${item.name} (${item.repo})`);
     console.log(`   └─ Versión remota: ${tagName} (publicado: ${publishedAt})`);
     console.log(`   └─ Hash local actual: ${localHash ? localHash.substring(0, 12) + '...' : 'No presente en repo'}`);
 
-    const matchingAsset = (release.assets || []).find(a => item.pattern.test(a.name));
+    const matchingAsset = (release.assets || []).find((a) => targetAssetName && a.name === targetAssetName);
     if (matchingAsset) {
-      console.log(`   └─ Asset descargable: ${matchingAsset.name} (${(matchingAsset.size / 1024).toFixed(1)} KB)`);
+      console.log(`   └─ Asset verificado: ${matchingAsset.name} (${(matchingAsset.size / 1024).toFixed(1)} KB)`);
+    } else {
+      console.log(`   └─ Asset: ⚠️ No se encontró asset exacto '${targetAssetName || item.name}' en release ${tagName}`);
     }
 
-    // Verificación de FIRMWARE (no de hash): un payload "solo para 14.xx"
-    // cargaría y rompería el jailbreak; el SHA256 no lo detecta.
     const fw = checkPayloadFirmware(item.name, consoleFw, matrix);
     if (!fw.known) {
-      // Sin entrada en la matriz no hay veredicto posible: avisar, no bloquear
-      // (bloquear por falta de metadatos tumbaría payloads que sí funcionan).
       console.log(`   └─ FW: ⚠️ ${fw.reason}`);
     } else if (fw.compatible) {
       console.log(`   └─ FW: ✔ ${fw.reason}`);
@@ -178,12 +199,30 @@ async function checkPayloadUpdates(dryRun = true, opts = {}) {
       console.log(`   └─ FW: ⛔ ${fw.reason}`);
     }
     if (fw.notes) console.log(`   └─ Notas: ${fw.notes}`);
-    if (!dryRun && matchingAsset && matchingAsset.browser_download_url && fw.compatible) {
+
+    if (!dryRun) {
+      if (!entry || !entry.releaseTag || !entry.assetName || !entry.sha256) {
+        console.log(`   └─ ⛔ ABORT: falta releaseTag, assetName o sha256 en manifest para ${item.name} (fail-closed).`);
+        continue;
+      }
+      if (release.tag_name !== entry.releaseTag) {
+        console.log(`   └─ ⛔ ABORT: tag remoto ${release.tag_name} no coincide con manifest (${entry.releaseTag}).`);
+        continue;
+      }
+      if (!matchingAsset || !matchingAsset.browser_download_url) {
+        console.log(`   └─ ⛔ ABORT: asset exacto '${entry.assetName}' no encontrado en release ${release.tag_name}.`);
+        continue;
+      }
+      if (!fw.compatible) {
+        console.log(`   └─ ⛔ ABORT: payload incompatible con FW de la consola (${consoleFw}).`);
+        continue;
+      }
+
       console.log(`   └─ 🚀 Descargando y aplicando actualización para ${item.name}...`);
       const buf = await downloadBuffer(matchingAsset.browser_download_url);
       if (buf) {
         const backupRoot = path.join(payloadDir, '..', 'data', 'backups', 'payloads');
-        const applied = applyPayloadWithRollback(localFile, buf, null, backupRoot);
+        const applied = applyPayloadWithRollback(localFile, buf, entry.sha256, backupRoot);
         if (applied.success) {
           console.log(`   └─ ✅ Actualización aplicada correctamente (SHA256: ${applied.sha256.slice(0, 12)}...)`);
         } else {
@@ -218,4 +257,5 @@ module.exports = {
   backupPayload,
   applyPayloadWithRollback,
   getLocalFileHash,
+  loadPayloadManifest,
 };

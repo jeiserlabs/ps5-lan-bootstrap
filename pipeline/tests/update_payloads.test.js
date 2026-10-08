@@ -16,6 +16,7 @@ const {
   backupPayload,
   applyPayloadWithRollback,
   getLocalFileHash,
+  loadPayloadManifest,
 } = require('../scripts/update_payloads.js');
 
 test('Payload Updater — Validación Criptográfica y Rollback', async (t) => {
@@ -60,6 +61,25 @@ test('Payload Updater — Validación Criptográfica y Rollback', async (t) => {
     const hash = getLocalFileHash(testFile);
     assert.ok(typeof hash === 'string');
     assert.equal(getLocalFileHash(path.join(tmpDir, 'non_existent.elf')), null);
+  });
+
+  await t.test('5. loadPayloadManifest() carga manifiesto con entradas válidas y hashes de 64 caracteres', () => {
+    const manifest = loadPayloadManifest();
+    assert.ok(manifest['kstuff.elf'], 'kstuff.elf debe existir en el manifiesto');
+    assert.equal(manifest['kstuff.elf'].assetName, 'kstuff.elf');
+    assert.equal(manifest['kstuff.elf'].releaseTag, 'v1.11');
+    assert.equal(manifest['kstuff.elf'].sha256.length, 64);
+    assert.ok(manifest['ftpsrv-ps5.elf']);
+    assert.equal(manifest['ftpsrv-ps5.elf'].releaseTag, 'v0.21.1');
+    assert.equal(manifest['ftpsrv-ps5.elf'].sha256.length, 64);
+  });
+
+  await t.test('6. Fail-Closed: applyPayloadWithRollback rechaza hash mismatch y conserva archivo previo', () => {
+    const tampered = Buffer.from('TAMPERED_CODE_EXECUTION');
+    const legitHash = crypto.createHash('sha256').update(Buffer.from('DIFFERENT_CODE')).digest('hex');
+    const res = applyPayloadWithRollback(testFile, tampered, legitHash, backupDir);
+    assert.equal(res.success, false);
+    assert.match(res.error, /Hash mismatch/);
   });
 
   // Limpieza

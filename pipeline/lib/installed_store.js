@@ -16,15 +16,17 @@ function loadInstalledList(filePath) {
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) return parsed;
     }
-  } catch {
-    try {
-      const bak = `${filePath}.bak`;
-      if (fs.existsSync(bak)) {
-        const parsedBak = JSON.parse(fs.readFileSync(bak, 'utf8'));
-        if (Array.isArray(parsedBak)) return parsedBak;
-      }
-    } catch {}
-  }
+  } catch {}
+
+  // Fallback a .bak ante corrupción de sintaxis o semántica (ej. {})
+  try {
+    const bak = `${filePath}.bak`;
+    if (fs.existsSync(bak)) {
+      const parsedBak = JSON.parse(fs.readFileSync(bak, 'utf8'));
+      if (Array.isArray(parsedBak)) return parsedBak;
+    }
+  } catch {}
+
   return [];
 }
 
