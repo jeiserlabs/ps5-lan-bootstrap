@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Verificación de firmware de payloads:** `update_payloads.js` contrasta cada payload con `payloads/compatibility.json` contra `cfg.ps5.firmware` (nuevo, override `PS5_FIRMWARE`) y aborta con `--apply` si alguno no soporta el FW. El SHA256 solo probaba integridad. Añadida la entrada `webkit-autoloader` a la matriz.
 - **`VERIFICATION.md`:** evidencia de ejecución (tests, ledger, sonda real a la consola, límites declarados).
 - **16 tests nuevos** (`pipeline/tests/ps5_compatibility.test.js`): 108/108 en total, incluida la guarda anti-contaminación que impide bloquear los juegos que la auditoría FTP confirma instalados.
-- **Biblioteca PS5 100% Full Completa (11/11 títulos):** God of War 2018 (`CUSA07408`) consolidado con Base + Update 1.34 + 8 DLCs; Ghost of Tsushima (`CUSA13323`) con Base v2.24 + DLC Director's Cut; Haven (`CUSA23384`) v1.06 integrado. 0 pendientes, 0 huérfanos.
+- **Biblioteca PS5 100% Full Completa (12/12 títulos):** God of War Ragnarök (`CUSA34388`) consolidado con Base (90.55 GB) + Update v2.00 (19.56 GB) + 2 DLCs a 113 MB/s; God of War 2018 (`CUSA07408`) con Base + Update 1.34 + 8 DLCs; Ghost of Tsushima (`CUSA13323`) con Base v2.24 + DLC Director's Cut; Haven (`CUSA23384`) v1.06 integrado. 0 pendientes, 0 huérfanos. Consola con >68m uptime.
 - **Resolución Forense Crash 3 Minutos:** Purga de 20.8 GB de fragmentos `.dat` corruptos de BGFT en `/user/download` y retiro de etaHEN colapsante; consola estabilizada con cadena dorada minimalista y uptime continuo sin kernel panics.
 
 ### Fixed
