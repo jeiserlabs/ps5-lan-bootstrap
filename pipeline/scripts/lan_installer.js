@@ -98,11 +98,14 @@ async function installPkg(pkgPath, dryRun = false) {
     return false;
   }
 
+  const category = audit.info.category || pkgRules.classifyPkg(filename);
+  const sizeGb = (audit.info.sizeBytes / (1024 ** 3)).toFixed(2);
+
   // Guarda de compatibilidad por evidencia local: un título con rechazo
   // determinista (mismo byte N veces con disco libre) NO se reintenta; los
   // reportes de foros sin verificar solo dejan aviso en el log.
   const compat = checkCompatibility(audit.info.titleId);
-  if (!compat.compatible) {
+  if (!compat.compatible && category !== 'DLC') {
     logPs5(TAG, `⛔ TÍTULO BLOQUEADO (${compat.titleId}): ${compat.reason} → ${compat.action} Omitido SIN descargar.`, LOG_FILE);
     if (!dryRun) sendTelegramMessage(`⛔ *PS5 título bloqueado*: [${compat.titleId}] ${compat.reason}\n${compat.action}`);
     return false;
@@ -111,8 +114,6 @@ async function installPkg(pkgPath, dryRun = false) {
     logPs5(TAG, `⚠️ Compatibilidad dudosa (${compat.titleId}): ${compat.reason} → ${compat.action}`, LOG_FILE);
   }
 
-  const category = audit.info.category || pkgRules.classifyPkg(filename);
-  const sizeGb = (audit.info.sizeBytes / (1024 ** 3)).toFixed(2);
   logPs5(TAG, `▶️ Preparando: [${audit.info.titleId}] ${filename} (${category}, ${sizeGb} GB)`, LOG_FILE);
 
   if (dryRun) {
