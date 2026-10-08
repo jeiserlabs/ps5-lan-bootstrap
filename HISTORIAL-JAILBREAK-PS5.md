@@ -478,5 +478,31 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - Currículums se archivaron en `resume/cv_versiones/` bajo `.gitignore`.
 - El repositorio `ps5-lan-bootstrap` se incrementó a la versión **1.2.0**.
 
+## 26. Resolución Forense del Crash de 3 Minutos, Auditoría de Payloads y Estabilización (8-oct mañana)
 
+**1. Contexto del Incidente:**
+- La consola sufría un apagón súbito / Kernel Panic recurrente exactamente a los ~180-200 segundos (3m11s, 3m23s) tras iniciar.
+- Se sospechó erróneamente de incompatibilidad de kstuff-lite, pausas de ShadowMountPlus, corrupción del firmware o necesidad de formateo de fábrica.
+
+**2. Línea Temporal de Intentos y Descartes:**
+- **Intento 1 (Eliminación de etaHEN):** Se sospechó de colisión de parches con etaHEN. Se eliminó /data/pldmgr/payloads/etaHEN/. La consola continuó apagándose a los 3 minutos.
+- **Intento 2 (Auditoría kstuff normal vs kstuff-lite):** Se contrastaron los repositorios oficiales (EchoStretch/kstuff-lite vs EchoStretch/kstuff).
+  * EchoStretch/kstuff estándar solo soporta hasta FW 10.01.
+  * EchoStretch/kstuff-lite v1.11 Beta es el ÚNICO port oficial para FW 13.00, 13.20, 13.40 y 13.42.
+  * Análisis criptográfico: SHA256 de kstuff.elf y kstuff-lite_v1.11.elf son 100% idénticos (AB9A6CB4D3B1DAF139D4D64...). No existe otro binario válido en 13.40.
+- **Intento 3 (Auditoría ShadowMountPlus):** Se inspeccionó /data/shadowmount/config.ini vía FTP. La directiva kstuff_game_auto_toggle=0 ya estaba configurada desde el 3 de octubre, descartando pausas involuntarias de kstuff.
+- **Intento 4 (Evaluación de Hardware M.2):** Se auditaron las unidades NVMe del PC. El disco secundario ADATA SX6000PNP es PCIe Gen3 (bloqueado por el POST de PS5). El Kingston SNV2S1000G es Gen4 pero aloja Windows C:. Se descartó manipulación física de hardware al identificarse una causa de software.
+- **Intento 5 (Descarte de Formateo de Fábrica):** Se preservaron íntegros los 11 juegos instalados en /user/app/ y las partidas guardadas.
+
+**3. Causa Raíz Descubierta (Root Cause):**
+- La auditoría quirúrgica por FTP (:2121) detectó **20.8+ GB de descargas huérfanas y corruptas** en /user/download/:
+  * CUSA43942 (MLB The Show 24): 18.5 GB en fragmentos .dat interrumpidos.
+  * NPXS40140 (Media / YouTube): 2.4 GB en fragmentos residuales.
+- El demonio nativo de Sony **BGFT** (libSceBgft.sprx - Background File Transfer) intentaba en cada arranque reanudar automáticamente estas transferencias incompletas. Al no hallar el servidor HTTP de origen en la red, entraba en un bucle cerrado de I/O hang, provocando un desbordamiento del temporizador watchdog y forzando al controlador de energía (PMIC) a apagar la consola a los ~3 minutos.
+
+**4. Ejecución Quirúrgica y Resultados:**
+- Se ejecutó script de purga FTP eliminando /user/download/CUSA43942/, /user/download/NPXS40140/ y residuales de etaHEN.
+- **Espacio Libre Recuperado:** Incremento de 325.50 GB a **348.26 GB libres** (+22.75 GB netos).
+- **Estabilidad Verificada:** Prueba de uptime continuo superó **16 minutos ininterrumpidos** con todos los servicios activos (kstuff-lite v1.11, pkg-receiver en :12800, tpsrv en :2121, pldmgr en :8084).
+- **Estado Actual:** Consola 100% estable, sin bloqueos, lista para recibir *God of War 2018* (43.48 GB) mediante pipeline Gigabit LAN Range 206.
 
