@@ -506,3 +506,23 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - **Estabilidad Verificada:** Prueba de uptime continuo superó **16 minutos ininterrumpidos** con todos los servicios activos (kstuff-lite v1.11, pkg-receiver en :12800, tpsrv en :2121, pldmgr en :8084).
 - **Estado Actual:** Consola 100% estable, sin bloqueos, lista para recibir *God of War 2018* (43.48 GB) mediante pipeline Gigabit LAN Range 206.
 
+## 27. Consolidación de Estabilidad, Consenso Técnico y Transferencia Gigabit de God of War 2018 (8-oct mañana)
+
+**1. Consenso Técnico Alcanzado:**
+- Se contrastaron todas las hipótesis contra la telemetría en vivo y la documentación de la comunidad:
+  * Descartado totalmente el uso de taHEN en FW 13.40 (causante del doble parcheo de kernel y cuelgues).
+  * Validada la cadena minimalista como estándar dorado: kstuff-lite v1.11 + pkg-receiver (:12800) + tpsrv (:2121).
+  * Confirmada la desactivación preventiva de kstuff_game_auto_toggle=0 en /data/shadowmount/config.ini.
+  * La purga de /user/download/ (20.8 GB de BGFT corrupto) consolidó la estabilidad total de la máquina.
+
+**2. Despliegue de Servidor Gigabit LAN Multi-Drive (Puerto 9898):**
+- Se activó el servicio nativo pipeline/scripts/server.js con soporte HTTP 1.1, streaming asíncrono y cabeceras Range 206 (buffers 1 MB).
+- Configuración adaptada para servir bibliotecas principales más la carpeta de descargas de Telegram (C:\Users\dev\Desktop\DESCARGAS TELEGRAM\God.of.War.2018-CUSA07408).
+- Endpoint auditado: la PS5 solicita paquetes con parámetros extendidos (/pkg/<archivo>?product=...&serverIpAddr=...), resueltos transparentemente por el servidor.
+
+**3. Estado de la Instalación de God of War 2018 (CUSA07408):**
+- Inyección directa disparada hacia pkg-receiver (:12800) para el juego base God.of.War.2018-CUSA07408.pkg (38.72 GB brutos).
+- Rendimiento medido: Transferencia continua a **68 - 72 MB/s** en chunks de 16.8 MB.
+- Progreso en tiempo real al momento de este checkpoint: **>23 GB transferidos (>59%)**.
+- Consola operando con **uptime continuo >36 minutos** sin caídas ni advertencias.
+

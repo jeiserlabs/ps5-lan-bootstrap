@@ -18,10 +18,18 @@ const DEFAULTS = {
     elfldrPort: 9021,
     installPort: 12800,
     serverPort: 9898,
+    // FW real de la consola (v26.04-13.40.00.02). Regla cero del repo: NUNCA
+    // actualizar. Se usa para validar payloads contra payloads/compatibility.json.
+    firmware: '13.40',
   },
   paths: {
+    // `watchDir` se mantiene por compatibilidad (primer directorio vigilado).
+    // `watchDirs` cubre TODAS las carpetas donde Telegram/IDM dejan archivos
+    // terminados: Telegram Desktop descarga directo a su carpeta de destino y
+    // esa carpeta (subcarpeta del Desktop) era invisible para el daemon.
     watchDir: 'C:\\Users\\dev\\Desktop',
-    libraryDirs: ['C:\\Biblioteca_Juegos_PS', 'E:\\Biblioteca_Juegos_PS'],
+    watchDirs: ['C:\\Users\\dev\\Desktop', 'C:\\Users\\dev\\Desktop\\DESCARGAS TELEGRAM'],
+    libraryDirs: ['C:\\Biblioteca_Juegos_PS', 'E:\\Biblioteca_Juegos_PS', 'C:\\Users\\dev\\Desktop\\DESCARGAS TELEGRAM', 'C:\\Users\\dev\\Desktop'],
     stagingDir: 'E:\\staging',
     braveProfileDir: 'E:\\ps5\\data\\browser_profiles\\brave_aria_profile',
     braveExe: 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
@@ -35,7 +43,10 @@ const DEFAULTS = {
     backoffBaseMs: 120000,
     backoffMaxMs: 1800000,
   },
-  archivePasswords: ['DLPSGAME.COM', 'hako', 'downloadgameps3.com'],
+  // Contraseñas de los sets de la escena. `loquitoRETROgamer` (set GoW 2018 con
+  // update) y `BlueMagic` (DLC GoW_D1C07408) vienen de las páginas de descarga
+  // del usuario: sin ellas la extracción falla y el set se marca `.failed`.
+  archivePasswords: ['DLPSGAME.COM', 'hako', 'downloadgameps3.com', 'loquitoRETROgamer', 'BlueMagic'],
   state: {
     cacheDir: CACHE_DIR,
     logFile: LOG_FILE,
@@ -71,7 +82,14 @@ function applyEnv(cfg) {
   const out = { ...cfg, paths: { ...cfg.paths }, ps5: { ...cfg.ps5 }, queue: { ...cfg.queue } };
   if (process.env.PS5_IP) out.ps5.ip = process.env.PS5_IP;
   if (process.env.PS5_PC_IP) out.ps5.pcIp = process.env.PS5_PC_IP;
+  if (process.env.PS5_FIRMWARE) out.ps5.firmware = process.env.PS5_FIRMWARE;
   if (process.env.PS5_DESKTOP) out.paths.watchDir = process.env.PS5_DESKTOP;
+  if (process.env.PS5_WATCH_DIRS) {
+    out.paths.watchDirs = process.env.PS5_WATCH_DIRS.split(';').filter(Boolean);
+    if (out.paths.watchDirs.length > 0) out.paths.watchDir = out.paths.watchDirs[0];
+  } else if (process.env.PS5_DESKTOP) {
+    out.paths.watchDirs = [process.env.PS5_DESKTOP];
+  }
   if (process.env.PS5_LIBRARY_DIRS) out.paths.libraryDirs = process.env.PS5_LIBRARY_DIRS.split(';').filter(Boolean);
   if (process.env.PS5_STAGING) out.paths.stagingDir = process.env.PS5_STAGING;
   if (process.env.PS5_BRAVE_PROFILE) out.paths.braveProfileDir = process.env.PS5_BRAVE_PROFILE;
