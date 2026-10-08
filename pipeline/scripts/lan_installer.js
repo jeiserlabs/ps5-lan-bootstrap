@@ -7,7 +7,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
@@ -17,6 +16,8 @@ const { checkCompatibility } = require('../lib/ps5_compatibility.js');
 const { sanitizeFilename } = require('../lib/security.js');
 const { ps5HttpGet, triggerPkgInstall } = require('../lib/ps5_client.js');
 const { sendTelegramMessage } = require('../lib/telegram.js');
+const { waitForPkgTransfer } = require('../lib/lan_watcher.js');
+const { loadInstalledList, recordInstalled } = require('../lib/installed_store.js');
 
 const cfg = getPs5Config();
 const LIB_DIRS = cfg.paths.libraryDirs;
@@ -30,8 +31,6 @@ const KEEP_PC = process.argv.includes('--keep-pc');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const httpGet = ps5HttpGet;
-function loadInstalledList() { try { return JSON.parse(fs.readFileSync(INSTALLED_FILE, 'utf8')); } catch { return []; } }
-function saveInstalledList(list) { try { fs.writeFileSync(INSTALLED_FILE, JSON.stringify(list, null, 2) + '\n'); } catch {} }
 
 async function ensureServerRunning() {
   const health = await httpGet(`http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/healthz`, 2000);
@@ -61,147 +60,6 @@ function collectLibraryPkgs(dir, depth = 2) {
   return pkgs;
 }
 
-function tcpOpen(host, port, timeoutMs = 2000) {
-  return new Promise((resolve) => {
-    const s = require('node:net').connect({ host, port });
-    s.setTimeout(timeoutMs);
-    s.on('connect', () => { s.destroy(); resolve(true); });
-    s.on('timeout', () => { s.destroy(); resolve(false); });
-    s.on('error', () => { s.destroy(); resolve(false); });
-  });
-}
-
-async function ensureFtpAlive() {
-  const alive = await tcpOpen(cfg.ps5.ip, 2121, 2000);
-  if (!alive) {
-    logPs5(TAG, '⚠️ ftpsrv (2121) caído en PS5. Reactivando vía Payload Manager...', LOG_FILE);
-    await httpGet(`http://${cfg.ps5.ip}:8084/loadpayload:ftpsrv-ps5.elf`, 5000);
-    await sleep(2500);
-  }
-}
-
-function verifyFtpInstalled(titleId, category, contentId) {
-  try {
-    const pyScript = path.join(__dirname, 'verify_installed_ftp.py');
-    const { execFileSync } = require('node:child_process');
-    const args = [pyScript, titleId, category];
-    if (contentId) args.push(contentId);
-    const out = execFileSync('python', args, { encoding: 'utf8', timeout: 8000 });
-    return out.trim() === 'OK';
-  } catch {
-    return false;
-  }
-}
-
-async function waitForPkgTransfer(filename, expectedSize, titleId, category, contentId) {
-  const startedAt = Date.now();
-  let lastRangeTime = Date.now();
-  let lastEndByte = 0;
-  let hasStarted = false;
-  let lastReportedPct = -1;
-  // Lectura incremental por offset. Arrancamos en el EOF actual para ignorar los
-  // RANGE históricos del log append-only: antes se leía el fichero entero (53 MB
-  // / 298k líneas) cada 5s, y una invocación nueva se siembra con el máximo
-  // histórico (3.36 GB) con lo que esperaba 180s en vano a superarse a sí misma.
-  let readOffset = 0;
-  try { readOffset = fs.statSync(cfg.state.logFile).size; } catch {}
-
-  if (expectedSize < 20 * 1024 * 1024) {
-    await sleep(2000);
-  } else {
-    for (let i = 0; i < 1080; i++) {
-      await sleep(5000);
-      try {
-        if (fs.existsSync(cfg.state.logFile)) {
-          const size = fs.statSync(cfg.state.logFile).size;
-          if (size < readOffset) readOffset = 0; // log rotado/truncado
-          if (size > readOffset) {
-            const fd = fs.openSync(cfg.state.logFile, 'r');
-            let consumed = 0;
-            try {
-              const len = size - readOffset;
-              const buf = Buffer.alloc(len);
-              const bytes = fs.readSync(fd, buf, 0, len, readOffset);
-              const chunk = buf.toString('utf8', 0, bytes);
-              // No consumir una línea parcial: se relee entera la próxima vuelta
-              // para no perder el RANGE definitivo del 100%.
-              const nl = chunk.lastIndexOf('\n');
-              const complete = nl === -1 ? '' : chunk.slice(0, nl + 1);
-              consumed = nl === -1 ? 0 : nl + 1;
-              const lines = complete.split('\n').filter((l) => l.includes(filename) && l.includes('[SERVER] RANGE'));
-              if (lines.length > 0) {
-                hasStarted = true;
-                const lastLine = lines[lines.length - 1];
-                const m = lastLine.match(/RANGE "bytes=(\d+)-(\d+)"/);
-                if (m) {
-                  const endByte = Number(m[2]);
-                  if (endByte > lastEndByte) {
-                    lastEndByte = endByte;
-                    lastRangeTime = Date.now();
-                    const pct = Math.floor((lastEndByte / expectedSize) * 100);
-                    if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
-                      lastReportedPct = pct;
-                      logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
-                    }
-                  }
-                  if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
-                    logPs5(TAG, `📦 100% transferido (${(expectedSize / 1e9).toFixed(2)} GB). Consolidando en PS5...`, LOG_FILE);
-                    break;
-                  }
-                }
-              }
-            } finally {
-              fs.closeSync(fd);
-            }
-            readOffset += consumed;
-          }
-        }
-      } catch {}
-
-      // La PS5 aceptó el paquete pero nunca pidió rangos: fallar rápido en vez
-      // de esperar 1080 vueltas (90 min).
-      if (!hasStarted && Date.now() - startedAt > 120000) {
-        logPs5(TAG, `❌ La PS5 no solicitó ningún rango en 120s. Abortando.`, LOG_FILE);
-        return false;
-      }
-
-      if (hasStarted && Date.now() - lastRangeTime > 180000) {
-        if (expectedSize > 0 && lastEndByte >= expectedSize * 0.98) {
-          logPs5(TAG, `Transferencia HTTP cesó con ${(lastEndByte / 1e9).toFixed(2)} GB (>=98%). Verificando...`, LOG_FILE);
-          break;
-        }
-        logPs5(TAG, `❌ Transferencia estancada a los ${(lastEndByte / 1e9).toFixed(2)} GB. Abortando.`, LOG_FILE);
-        return false;
-      }
-    }
-  }
-
-  logPs5(TAG, 'Esperando consolidación interna en PS5...', LOG_FILE);
-  for (let j = 0; j < 60; j++) {
-    const res = await httpGet(`http://${cfg.ps5.ip}:${cfg.ps5.installPort}/api/status`, 3000);
-    if (res && res.status === 200) {
-      try {
-        const state = JSON.parse(res.body);
-        if (!state.busy && !state.pull) break;
-      } catch {}
-    }
-    await sleep(2000);
-  }
-
-  await ensureFtpAlive();
-  for (let v = 0; v < 24; v++) {
-    const isOk = verifyFtpInstalled(titleId, category, contentId);
-    if (isOk) {
-      logPs5(TAG, `🎯 VERIFICACIÓN FTP EXITOSA: [${titleId}] confirmado en PS5 (${category})`, LOG_FILE);
-      return true;
-    }
-    if (v === 4 || v === 12) await ensureFtpAlive();
-    await sleep(2500);
-  }
-
-  logPs5(TAG, `❌ VERIFICACIÓN FTP FALLÓ: [${titleId}] NO se encontró en PS5 (${category}).`, LOG_FILE);
-  return false;
-}
 
 /**
  * Espacio libre real en la PS5 según el receiver (/api/space).
@@ -279,11 +137,16 @@ async function installPkg(pkgPath, dryRun = false) {
     );
     return false;
   }
-  if (freeBytes >= 0) {
-    logPs5(TAG, `Espacio libre en PS5: ${(freeBytes / 1e9).toFixed(1)} GB (mínimo requerido ${(neededBytes / 1e9).toFixed(1)} GB) ✔`, LOG_FILE);
-  } else {
-    logPs5(TAG, '⚠️ No se pudo leer /api/space del receiver: se instala sin verificación de espacio.', LOG_FILE);
+  if (freeBytes < 0) {
+    logPs5(
+      TAG,
+      `⛔ NO SE PUDO LEER ESPACIO en PS5 (/api/space falló o timeout) para ${filename}. Omitido por seguridad (fail-closed estricto).`,
+      LOG_FILE,
+    );
+    sendTelegramMessage(`⛔ *PS5 espacio desconocido*: No se pudo verificar espacio para ${filename}. Cancelado por seguridad (fail-closed).`);
+    return false;
   }
+  logPs5(TAG, `Espacio libre en PS5: ${(freeBytes / 1e9).toFixed(1)} GB (mínimo requerido ${(neededBytes / 1e9).toFixed(1)} GB) ✔`, LOG_FILE);
 
   const fileUrl = `http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/pkg/${encodeURIComponent(filename)}`;
 
@@ -296,17 +159,21 @@ async function installPkg(pkgPath, dryRun = false) {
   }
 
   logPs5(TAG, `🚀 PS5 aceptó el paquete. Transfiriendo e instalando...`, LOG_FILE);
-
   await sleep(5000);
 
-  const completed = await waitForPkgTransfer(filename, audit.info.sizeBytes, audit.info.titleId, category, audit.info.contentId);
+  const completed = await waitForPkgTransfer(
+    filename,
+    audit.info.sizeBytes,
+    audit.info.titleId,
+    category,
+    audit.info.contentId,
+    cfg,
+    TAG,
+    LOG_FILE,
+  );
   if (completed) {
     logPs5(TAG, `✅ INSTALACIÓN COMPLETADA Y VERIFICADA: ${filename}`, LOG_FILE);
-    const installed = loadInstalledList();
-    if (!installed.includes(filename)) {
-      installed.push(filename);
-      saveInstalledList(installed);
-    }
+    recordInstalled(INSTALLED_FILE, filename, LOG_FILE);
     if (!dryRun && (audit.info.sizeBytes > 1024 * 1024 * 1024 || category === 'BASE')) {
       sendTelegramMessage(`✅ *PS5 Instalado*: [${audit.info.titleId}] ${filename} (${sizeGb} GB) verificado en consola.`);
     }
@@ -357,7 +224,7 @@ async function main() {
   while (true) {
     let allPkgs = LIB_DIRS.flatMap((dir) => collectLibraryPkgs(dir, 3));
     if (titleFilter) allPkgs = allPkgs.filter((p) => path.basename(p).toUpperCase().includes(titleFilter));
-    const installed = loadInstalledList();
+    const installed = loadInstalledList(INSTALLED_FILE);
     const { plan: rawPlan, held } = pkgRules.planInstallOrder(allPkgs, installed);
     const plan = rawPlan.filter((p) => !failedSet.has(path.basename(p)));
     // Cascada primero (BASE → FIX → UPDATE → DLC) y, dentro de cada categoría,

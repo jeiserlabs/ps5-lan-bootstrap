@@ -6,6 +6,7 @@
  */
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 
 /**
@@ -29,8 +30,6 @@ function sanitizeFilename(input) {
 
 /**
  * Verifica si un path resuelto reside estrictamente dentro de un directorio padre.
- * Cubre rutas relativas/escape textual; NO resuelve junctions/symlinks reales
- * (P2 hardening pendiente: fs.realpath antes de comparar).
  * @param {string} parentDir
  * @param {string} targetPath
  * @returns {boolean}
@@ -42,7 +41,26 @@ function isPathInside(parentDir, targetPath) {
   return resolvedTarget.startsWith(resolvedParent + path.sep) || resolvedTarget === resolvedParent;
 }
 
+/**
+ * Verifica si un path reside dentro de un directorio padre resolviendo symlinks/junctions reales.
+ * @param {string} parentDir
+ * @param {string} targetPath
+ * @returns {boolean}
+ */
+function isRealPathInside(parentDir, targetPath) {
+  if (!parentDir || !targetPath) return false;
+  try {
+    if (!fs.existsSync(parentDir) || !fs.existsSync(targetPath)) return false;
+    const realParent = fs.realpathSync(parentDir);
+    const realTarget = fs.realpathSync(targetPath);
+    return realTarget.startsWith(realParent + path.sep) || realTarget === realParent;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   sanitizeFilename,
   isPathInside,
+  isRealPathInside,
 };

@@ -9,9 +9,16 @@
 # Log: data/logs/ps5_pc_autostart.log
 
 $ErrorActionPreference = 'Continue'
-$root     = 'E:\ps5'
+$root     = if ($env:PS5_ROOT) { $env:PS5_ROOT } elseif ($PSScriptRoot) { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path } else { 'E:\ps5' }
 $log      = Join-Path $root 'data\logs\ps5_pc_autostart.log'
-$nodeExe  = 'C:\Program Files\nodejs\node.exe'
+$nodeExe  = if ($env:NODE_EXE) { $env:NODE_EXE } else {
+  $cmdNode = Get-Command node -ErrorAction SilentlyContinue
+  if ($cmdNode) { $cmdNode.Source } else { 'C:\Program Files\nodejs\node.exe' }
+}
+$pythonExe = if ($env:PYTHON_EXE) { $env:PYTHON_EXE } else {
+  $cmdPy = Get-Command python -ErrorAction SilentlyContinue
+  if ($cmdPy) { $cmdPy.Source } else { 'python.exe' }
+}
 
 function Write-Log([string]$msg) {
   $line = ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
@@ -86,8 +93,10 @@ if ($hostProc) {
   Write-Log 'Host exploit DNS+HTTPS: proceso python ya activo, no se duplica.'
 } else {
   $hostDir = Join-Path $root 'ps5-host'
-  Start-Process -FilePath 'C:\Python314\python.exe' `
-    -ArgumentList '-X','utf8','webkit-autoloader-host_v0.5.2.py','--ip','192.168.2.1','--no-update-check','--verbose' `
+  $hostScript = (Get-ChildItem -Path $hostDir -Filter 'webkit-autoloader-host_v*.py' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1).Name
+  if (-not $hostScript) { $hostScript = 'webkit-autoloader-host_v0.6.0.py' }
+  Start-Process -FilePath $pythonExe `
+    -ArgumentList '-X','utf8',"`"$hostScript`"",'--ip','192.168.2.1','--no-update-check','--verbose' `
     -WorkingDirectory $hostDir -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $hostDir 'host.log') `
     -RedirectStandardError  (Join-Path $hostDir 'host.err')

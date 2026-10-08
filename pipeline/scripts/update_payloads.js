@@ -21,7 +21,31 @@ const REPOS = [
   { name: 'ftpsrv-ps5.elf', repo: 'ps5-payload-dev/ftpsrv', pattern: /ftpsrv.*\.elf$/i },
   { name: 'shadowmountplus.elf', repo: 'drakmor/ShadowMountPlus', pattern: /shadowmount.*\.elf$/i },
   { name: 'webkit-autoloader', repo: 'itsPLK/ps5-webkit-autoloader', pattern: /\.elf$/i },
+  { name: 'pkg-receiver.elf', repo: 'Loopayeh/pkg-receiver', pattern: /\.elf$/i },
 ];
+
+function downloadBuffer(url) {
+  return new Promise((resolve) => {
+    const opts = {
+      headers: {
+        'User-Agent': 'ps5-lan-bootstrap-updater',
+        Accept: 'application/octet-stream',
+      },
+    };
+    https
+      .get(url, opts, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const loc = res.headers.location;
+          if (loc) return downloadBuffer(loc).then(resolve);
+        }
+        if (res.statusCode !== 200) return resolve(null);
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      })
+      .on('error', () => resolve(null));
+  });
+}
 
 function fetchJson(url) {
   return new Promise((resolve) => {
@@ -154,6 +178,21 @@ async function checkPayloadUpdates(dryRun = true, opts = {}) {
       console.log(`   └─ FW: ⛔ ${fw.reason}`);
     }
     if (fw.notes) console.log(`   └─ Notas: ${fw.notes}`);
+    if (!dryRun && matchingAsset && matchingAsset.browser_download_url && fw.compatible) {
+      console.log(`   └─ 🚀 Descargando y aplicando actualización para ${item.name}...`);
+      const buf = await downloadBuffer(matchingAsset.browser_download_url);
+      if (buf) {
+        const backupRoot = path.join(payloadDir, '..', 'data', 'backups', 'payloads');
+        const applied = applyPayloadWithRollback(localFile, buf, null, backupRoot);
+        if (applied.success) {
+          console.log(`   └─ ✅ Actualización aplicada correctamente (SHA256: ${applied.sha256.slice(0, 12)}...)`);
+        } else {
+          console.log(`   └─ ❌ Error al aplicar: ${applied.error}`);
+        }
+      } else {
+        console.log(`   └─ ❌ Error descargando asset desde GitHub.`);
+      }
+    }
     console.log('');
   }
 

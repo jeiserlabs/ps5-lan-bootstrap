@@ -4,6 +4,8 @@
 *.env
 *.pem
 *.key
+.passwords
+SESION_*.md
 
 # Runtime, logs, and processes
 *.pid

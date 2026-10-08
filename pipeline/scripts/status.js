@@ -115,10 +115,11 @@ async function collect() {
 
   const aria = ariaState();
   const archives = [];
+  const failed = [];
   for (const dir of (cfg.paths.watchDirs || [cfg.paths.watchDir])) {
     walkFiles(dir, new Set(['.rar', '.zip']), 1, archives);
+    walkFiles(dir, new Set(['.failed']), 1, failed);
   }
-  const failed = archives.filter((f) => f.endsWith('.failed'));
   const pkgs = [];
   for (const dir of cfg.paths.libraryDirs) walkFiles(dir, new Set(['.pkg']), 3, pkgs);
 

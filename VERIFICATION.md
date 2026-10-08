@@ -1,7 +1,7 @@
-# VERIFICATION — Filtro de compatibilidad PS4→PS5 + FW de payloads
+# VERIFICATION — Suite de Tests, Compatibilidad y Resiliencia
 
-**Fecha:** 2026-10-07 15:56 (-05:00) · **Node:** v24.18.0 · **HEAD:** `a27a057` (working tree, sin commitear)
-**Consola:** PS5 Slim FW 13.40 · LAN 192.168.2.1 ↔ 192.168.2.2 · kstuff 1.11 · Autoloader 0.5.2
+**Fecha:** 2026-10-08 11:05 (-05:00) · **Node:** v24.18.0 · **HEAD:** Sincronizado
+**Consola:** PS5 Slim FW 13.40 · LAN 192.168.2.1 ↔ 192.168.2.2 · kstuff 1.11 · Autoloader 0.6.0
 
 Este documento registra **solo lo que se ejecutó y su salida real**. Lo que no se pudo
 verificar aparece en la sección de límites, no como aprobado.
@@ -12,11 +12,11 @@ verificar aparece en la sección de límites, no como aprobado.
 
 ```
 $ node pipeline/tests/run_all.js
-ℹ tests 108
+ℹ tests 118
 ℹ suites 10
-ℹ pass 108
+ℹ pass 118
 ℹ fail 0
-ℹ duration_ms 716.1304
+ℹ duration_ms 753.7149
 ```
 
 Antes de este cambio: 92/92. Se añaden 16 tests (`pipeline/tests/ps5_compatibility.test.js`)

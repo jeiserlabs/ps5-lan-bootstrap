@@ -14,7 +14,7 @@ const path = require('node:path');
 const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { acquirePid, releasePid } = require('../lib/pidfile.js');
-const { sanitizeFilename, isPathInside } = require('../lib/security.js');
+const { sanitizeFilename, isPathInside, isRealPathInside } = require('../lib/security.js');
 
 const cfg = getPs5Config();
 const TAG = 'SERVER';
@@ -59,13 +59,19 @@ const pkgPathCache = new Map();
  * @returns {{ filePath: string } | null}
  */
 function resolvePkg(filename) {
-  if (pkgPathCache.has(filename)) {
-    return pkgPathCache.get(filename);
+  const cached = pkgPathCache.get(filename);
+  if (cached) {
+    try {
+      if (fs.existsSync(cached.filePath) && !fs.statSync(cached.filePath).isDirectory()) {
+        return cached;
+      }
+    } catch {}
+    pkgPathCache.delete(filename);
   }
   for (const dir of cfg.paths.libraryDirs) {
     const exact = path.join(dir, filename);
     try {
-      if (isPathInside(dir, exact) && fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
+      if (isPathInside(dir, exact) && isRealPathInside(dir, exact) && fs.existsSync(exact) && !fs.statSync(exact).isDirectory()) {
         const res = { filePath: exact };
         pkgPathCache.set(filename, res);
         return res;
@@ -76,7 +82,7 @@ function resolvePkg(filename) {
   }
   for (const dir of cfg.paths.libraryDirs) {
     const found = findExactInSubdirs(dir, filename, 3);
-    if (found && isPathInside(dir, found)) {
+    if (found && isPathInside(dir, found) && isRealPathInside(dir, found)) {
       const res = { filePath: found };
       pkgPathCache.set(filename, res);
       return res;
@@ -106,7 +112,7 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, port: PORT, dirs: cfg.paths.libraryDirs }));
+    res.end(JSON.stringify({ ok: true, port: PORT }));
     return;
   }
 

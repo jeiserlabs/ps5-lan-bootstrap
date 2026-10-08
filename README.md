@@ -41,8 +41,9 @@ git clone https://github.com/jeiserlabs/ps5-lan-bootstrap.git
 cd ps5-lan-bootstrap
 
 # Firewall (una vez; subred del cable solamente) — requiere admin
-netsh advfirewall firewall add rule name="PS5 Autoloader DNS"   dir=in action=allow protocol=UDP localport=53  remoteip=192.168.2.0/24
-netsh advfirewall firewall add rule name="PS5 Autoloader HTTPS" dir=in action=allow protocol=TCP localport=443 remoteip=192.168.2.0/24
+netsh advfirewall firewall add rule name="PS5 Autoloader DNS"   dir=in action=allow protocol=UDP localport=53   remoteip=192.168.2.0/24
+netsh advfirewall firewall add rule name="PS5 Autoloader HTTPS" dir=in action=allow protocol=TCP localport=443  remoteip=192.168.2.0/24
+netsh advfirewall firewall add rule name="PS5 PKG Server LAN"   dir=in action=allow protocol=TCP localport=9898 remoteip=192.168.2.0/24
 
 # Levantar todo (servidor LAN + watchdog + host del exploit) — idempotente
 powershell -NoProfile -ExecutionPolicy Bypass -File pipeline/scripts/ps5_pc_autostart.ps1
@@ -100,7 +101,7 @@ Desconecta la PS5 del PC cuando quieras: **la consola ya no lo necesita**. En ca
 | `npm run ps5:server` | Servidor LAN de PKGs (9898) |
 | `npm run ps5:send-elf -- x.elf` | Empujar un payload por elfldr (9021) |
 | `npm run ps5:daemon` / `ps5:aria-pilot` | Instalación/descargas automatizadas |
-| `npm test` | Suite de tests (81 tests / 7 suites, cero dependencias) |
+| `npm test` | Suite de tests (118 tests / 10 suites, Node core-first, Playwright opcional) |
 
 ## 📦 Payloads incluidos (SHA256 verificados)
 

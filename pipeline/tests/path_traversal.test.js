@@ -9,7 +9,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { sanitizeFilename, isPathInside } = require('../lib/security.js');
+const { sanitizeFilename, isPathInside, isRealPathInside } = require('../lib/security.js');
 
 test('Seguridad — Sanitización Estricta Anti-Path Traversal', async (t) => {
   await t.test('1. Neutraliza secuencias relativas estilo UNIX (../../etc/passwd)', () => {
@@ -45,5 +45,13 @@ test('Seguridad — Sanitización Estricta Anti-Path Traversal', async (t) => {
     const sanitized = sanitizeFilename(malicious);
     assert.ok(!sanitized.includes(';'));
     assert.equal(sanitized, 'game inject-cmd.pkg');
+  });
+
+  await t.test('6. isRealPathInside valida rutas reales y rechaza escapes fuera del directorio', () => {
+    const parent = path.resolve('.');
+    const validChild = path.resolve('./pipeline/lib/security.js');
+    assert.ok(isRealPathInside(parent, validChild));
+    const outside = path.resolve('..');
+    assert.ok(!isRealPathInside(parent, outside));
   });
 });

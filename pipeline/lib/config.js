@@ -11,6 +11,21 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const CACHE_DIR = path.join(ROOT, 'data', 'cache', 'ps5');
 const LOG_FILE = path.join(ROOT, 'data', 'logs', 'ps5_pipeline.log');
 
+function loadArchivePasswords() {
+  if (process.env.PS5_ARCHIVE_PASSWORDS) {
+    return process.env.PS5_ARCHIVE_PASSWORDS.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  }
+  const passFile = path.join(ROOT, '.passwords');
+  if (fs.existsSync(passFile)) {
+    try {
+      return fs.readFileSync(passFile, 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    } catch {}
+  }
+  return [];
+}
+
+const defaultDesktop = process.env.PS5_DESKTOP || path.join(process.env.USERPROFILE || 'C:\\Users\\dev', 'Desktop');
+
 const DEFAULTS = {
   ps5: {
     ip: '192.168.2.2',
@@ -18,20 +33,14 @@ const DEFAULTS = {
     elfldrPort: 9021,
     installPort: 12800,
     serverPort: 9898,
-    // FW real de la consola (v26.04-13.40.00.02). Regla cero del repo: NUNCA
-    // actualizar. Se usa para validar payloads contra payloads/compatibility.json.
     firmware: '13.40',
   },
   paths: {
-    // `watchDir` se mantiene por compatibilidad (primer directorio vigilado).
-    // `watchDirs` cubre TODAS las carpetas donde Telegram/IDM dejan archivos
-    // terminados: Telegram Desktop descarga directo a su carpeta de destino y
-    // esa carpeta (subcarpeta del Desktop) era invisible para el daemon.
-    watchDir: 'C:\\Users\\dev\\Desktop',
-    watchDirs: ['C:\\Users\\dev\\Desktop', 'C:\\Users\\dev\\Desktop\\DESCARGAS TELEGRAM'],
-    libraryDirs: ['C:\\Biblioteca_Juegos_PS', 'E:\\Biblioteca_Juegos_PS', 'C:\\Users\\dev\\Desktop\\DESCARGAS TELEGRAM', 'C:\\Users\\dev\\Desktop'],
-    stagingDir: 'E:\\staging',
-    braveProfileDir: 'E:\\ps5\\data\\browser_profiles\\brave_aria_profile',
+    watchDir: defaultDesktop,
+    watchDirs: [defaultDesktop, path.join(defaultDesktop, 'DESCARGAS TELEGRAM')],
+    libraryDirs: ['C:\\Biblioteca_Juegos_PS', 'E:\\Biblioteca_Juegos_PS', path.join(defaultDesktop, 'DESCARGAS TELEGRAM'), defaultDesktop],
+    stagingDir: path.join(ROOT, 'staging'),
+    braveProfileDir: path.join(ROOT, 'data', 'browser_profiles', 'brave_aria_profile'),
     braveExe: 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
     winrarExe: 'C:\\Program Files\\WinRAR\\WinRAR.exe',
     sevenZipExe: 'C:\\Program Files\\7-Zip\\7z.exe',
@@ -43,10 +52,7 @@ const DEFAULTS = {
     backoffBaseMs: 120000,
     backoffMaxMs: 1800000,
   },
-  // Contraseñas de los sets de la escena. `loquitoRETROgamer` (set GoW 2018 con
-  // update) y `BlueMagic` (DLC GoW_D1C07408) vienen de las páginas de descarga
-  // del usuario: sin ellas la extracción falla y el set se marca `.failed`.
-  archivePasswords: ['DLPSGAME.COM', 'hako', 'downloadgameps3.com', 'loquitoRETROgamer', 'BlueMagic'],
+  archivePasswords: loadArchivePasswords(),
   state: {
     cacheDir: CACHE_DIR,
     logFile: LOG_FILE,
@@ -97,6 +103,9 @@ function applyEnv(cfg) {
   if (process.env.PS5_WINRAR_EXE) out.paths.winrarExe = process.env.PS5_WINRAR_EXE;
   if (process.env.PS5_7ZIP_EXE) out.paths.sevenZipExe = process.env.PS5_7ZIP_EXE;
   if (process.env.PS5_POLL_MS) out.queue.pollMs = Number(process.env.PS5_POLL_MS);
+  if (process.env.PS5_ARCHIVE_PASSWORDS) {
+    out.archivePasswords = process.env.PS5_ARCHIVE_PASSWORDS.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  }
   return out;
 }
 
