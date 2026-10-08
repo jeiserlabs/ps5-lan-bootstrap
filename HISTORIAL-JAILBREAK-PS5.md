@@ -583,5 +583,20 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - **Estabilidad de la Consola:** Uptime ininterrumpido **>68 minutos** con cero caídas y servicios al 100%.
 - **Limpieza PC:** Se eliminaron las 55 partes RAR de Ragnarök en Telegram tras la consolidación (+102.5 GB recuperados; disco C: con 494.69 GB libres).
 
+## 30. Preservación de Enlaces Oficiales: Valhalla y Update 5.05 para CUSA34388 (8-oct mañana)
+
+**1. Verificación Criptográfica y de Red (HTTP 200 Confirmado):**
+- **Update 5.05 (Fix 5.05-9.00) por @CyB1K:** `https://akirabox.to/Z9dzBVwgxzk1/file` (Mirror 1Fichier: `https://1fichier.com/?36l7ei1osbxjbdqhdkmf`).
+- **All DLC Deluxe por @Fugazi:** `https://akirabox.to/9QWmpQ5OX3EB/file` (Mirror 1Fichier: `https://1fichier.com/?25fzo0jnaoe2e9pecbb6?`).
+- **DLC Valhalla Expansión:** `https://akirabox.to/ex5z2llQbmKq/file` (Mirror 1Fichier: `https://1fichier.com/?fdw75x7vcq796epwp5hb`).
+- **Contraseña universal:** `hako`.
+
+**2. Mecánica de Integración:**
+- Al descargar e inyectar `Update 5.05`, se sustituye automáticamente el parche `v2.00` en `/user/patch/CUSA34388/` sin duplicar almacenamiento.
+- El paquete de expansión `Valhalla.pkg` (~8.2 GB) se instala en `/user/addcont/` y desbloquea el modo epílogo directamente en el menú principal.
+- Impacto neto en SSD PS5: ~12 GB (de 173.52 GB disponibles).
+- Respaldo persistido en el SSOT local: `ENLACES_VALHALLA_CUSA34388.md`.
+
+
 
 
