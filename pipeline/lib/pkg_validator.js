@@ -3,12 +3,16 @@
  * @description Validador forense exhaustivo de paquetes PKG (PS4/PS5).
  *   Audita estructura binaria, contenedor Sony, límites de tabla, integridad
  *   param.sfo y legibilidad física para evitar que un PKG corrupto entre al pipeline.
+ *   Además anota la compatibilidad conocida del Title ID con el stack PS5 actual
+ *   (ver ps5_compatibility.js): por defecto es solo anotación (warning) y el
+ *   bloqueo real se activa con `validatePkg(pkg, { enforceCompatibility: true })`.
  * SRP < 300L. Cero dependencias externas.
  */
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { checkCompatibility } = require('./ps5_compatibility.js');
 
 const PKG_MAGIC = Buffer.from([0x7f, 0x43, 0x4e, 0x54]); // \x7fCNT
 const SFO_MAGIC = Buffer.from([0x00, 0x50, 0x53, 0x46]); // \x00PSF
@@ -61,9 +65,12 @@ function parseSfoBuffer(buf) {
 /**
  * Valida exhaustivamente un archivo PKG.
  * @param {string} filePath
+ * @param {{ enforceCompatibility?: boolean }} [opts] enforceCompatibility: true
+ *   convierte un título incompatible conocido en error (rechazo); por defecto
+ *   queda como warning para no invalidar herramientas de auditoría/inventario.
  * @returns {{ valid: boolean, errors: string[], warnings: string[], info: Record<string, any> }}
  */
-function validatePkg(filePath) {
+function validatePkg(filePath, opts = {}) {
   const errors = [];
   const warnings = [];
   const info = {
@@ -77,6 +84,7 @@ function validatePkg(filePath) {
     appVer: '1.00',
     contentId: 'UNKNOWN',
     entriesCount: 0,
+    compatibility: null,
   };
 
   // CHECK 1: Existencia y tamaño mínimo
@@ -250,6 +258,19 @@ function validatePkg(filePath) {
     try {
       fs.closeSync(fd);
     } catch {}
+  }
+
+  // CHECK 8: Compatibilidad del título con el stack PS5 (filtro data-driven).
+  // Solo `severity === 'block'` (evidencia local determinista) puede rechazar;
+  // los reportes de foros sin verificar quedan como anotación informativa.
+  const compatibility = checkCompatibility(info.titleId);
+  info.compatibility = compatibility;
+  if (compatibility.severity === 'block') {
+    const msg = `TÍTULO INCOMPATIBLE por evidencia local (${compatibility.titleId}): ${compatibility.reason} → ${compatibility.action}`;
+    if (opts.enforceCompatibility) errors.push(msg);
+    else warnings.push(msg);
+  } else if (compatibility.severity === 'warn') {
+    warnings.push(`Compatibilidad dudosa (${compatibility.titleId}): ${compatibility.reason} → ${compatibility.action}`);
   }
 
   return {

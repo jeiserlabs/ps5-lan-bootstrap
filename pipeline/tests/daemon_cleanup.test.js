@@ -149,3 +149,98 @@ test('daemon — processPendingArchives delega el borrado post-éxito al cleanup
   assert.match(src, /failed\.length/);
   assert.match(src, /quedaron volúmenes/);
 });
+
+test('daemon — ciclo con guarda de reentrancia (setInterval no solapa ciclos)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'daemon.js'), 'utf8');
+  // Sin esta guarda, setInterval lanza un cycle() nuevo cada 30s aunque el
+  // anterior dure ~180s: quedan ~6 solapados y cada uno vuelve a disparar
+  // /install contra el receiver de la PS5 (tarea única), que reinicia el pull
+  // desde byte 0. El techo pasa a ser ~30s x 1 Gbps = 3.36 GB de los 90.6 GB
+  // requeridos, así que la instalación nunca termina ni se escribe en el SSOT.
+  assert.match(src, /cicloEnVuelo/);
+  assert.match(src, /if \(cicloEnVuelo\) return;\s*cicloEnVuelo = true;\s*cycle\(\)/);
+  assert.match(src, /\.finally\(\(\) => \{ cicloEnVuelo = false; \}\);/);
+});
+
+test('daemon — isStillWriting(): no instalar un PKG que se está descargando', () => {
+  const dir = mkTmp();
+  try {
+    const fresh = path.join(dir, 'Descargando.pkg');
+    fs.writeFileSync(fresh, 'x');
+    // Recién escrito (IDM/aria2 siguen bajando): mtime al día → no se instala.
+    assert.equal(daemon.isStillWriting(fresh), true);
+
+    const stable = path.join(dir, 'Listo.pkg');
+    fs.writeFileSync(stable, 'x');
+    const old = Date.now() - 10 * 60 * 1000;
+    fs.utimesSync(stable, old / 1000, old / 1000);
+    assert.equal(daemon.isStillWriting(stable), false);
+
+    // Sin stat no hay certeza: esperar al próximo ciclo, nunca asumir listo.
+    assert.equal(daemon.isStillWriting(path.join(dir, 'no-existe.pkg')), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('daemon — installPass filtra los PKG en escritura antes de disparar /install', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'daemon.js'), 'utf8');
+  assert.match(src, /isStillWriting\(p\)/);
+  assert.match(src, /const pkgToInstall = plan\.plan\.find\(\(p\) => !isStillWriting\(p\)\)/);
+  assert.match(src, /Aún escribiéndose/);
+  // El camino viejo (siempre plan[0]) instalaba archivos a medio bajar.
+  assert.doesNotMatch(src, /const pkgToInstall = plan\.plan\[0\];/);
+});
+
+test('daemon — watchDirs: vigila la carpeta de descargas de Telegram (no solo el Desktop)', () => {
+  // Telegram Desktop escribe directo en su carpeta de destino. Si esa carpeta
+  // no está vigilada, los .pkg/.rar terminados se quedan ahí para siempre y el
+  // pipeline nunca los instala (hueco detectado el 2026-10-07 con la descarga
+  // de 44.6 GB por Telegram).
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'daemon.js'), 'utf8');
+  assert.match(src, /function watchDirs\(\)/);
+  assert.match(src, /for \(const dir of watchDirs\(\)\)/);
+  assert.doesNotMatch(src, /for \(const file of fs\.readdirSync\(cfg\.paths\.watchDir\)\)/);
+  const { getPs5Config } = require('../lib/config.js');
+  const cfg = getPs5Config();
+  assert.ok(Array.isArray(cfg.paths.watchDirs));
+  const telegramDir = path.join('C:', 'Users', 'dev', 'Desktop', 'DESCARGAS TELEGRAM');
+  assert.ok(cfg.paths.watchDirs.includes(telegramDir), `watchDirs=${JSON.stringify(cfg.paths.watchDirs)}`);
+});
+
+test('daemon — isSizeStable(): Telegram escribe a ráfagas, el mtime solo no basta', () => {
+  const dir = mkTmp();
+  try {
+    const p = path.join(dir, 'GOW_v1.35.patch.part1.rar');
+    fs.writeFileSync(p, Buffer.alloc(1000));
+    const t0 = 5_000_000;
+    // Primera observación: se aprende el tamaño, nunca se asume listo.
+    assert.equal(daemon.isSizeStable(p, t0, 90000), false);
+    assert.equal(daemon.isSizeStable(p, t0 + 10_000, 90000), false, 'aún dentro de la ventana');
+    assert.equal(daemon.isSizeStable(p, t0 + 100_000, 90000), true, 'sin cambios 100s → estable');
+    // Una ráfaga nueva reinicia la ventana (no se procesa a mitad de descarga).
+    fs.appendFileSync(p, Buffer.alloc(5));
+    assert.equal(daemon.isSizeStable(p, t0 + 110_000, 90000), false);
+    assert.equal(daemon.isSizeStable(p, t0 + 210_000, 90000), true);
+    // Archivo inexistente: sin certeza → nunca listo.
+    assert.equal(daemon.isSizeStable(path.join(dir, 'no-existe.rar'), t0 + 300_000, 90000), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('daemon — descargas incompletas de Telegram NO se renombran a .failed', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'daemon.js'), 'utf8');
+  // El rename a .failed solo aplica al watchDir clásico; en carpetas de descarga
+  // activas (Telegram) un set multipart incompleto da el mismo error que uno
+  // corrupto y renombrarlo rompe la descarga en curso.
+  assert.match(src, /if \(dir === cfg\.paths\.watchDir\) \{[\s\S]{0,200}\.failed/);
+  assert.match(src, /REPORTED_FAILURES/);
+  assert.match(src, /se deja intacta, puede faltar descarga/);
+  // Guarda de tamaño enganchada en AMBAS pasadas (archivos y PKGs sueltos).
+  assert.match(src, /if \(!isSizeStable\(fullPath\)\) continue;/);
+  assert.equal((src.match(/if \(!isSizeStable\(fullPath\)\) continue;/g) || []).length, 2);
+  // Y un PKG truncado no se mueve a la biblioteca (protege descargas a medias).
+  assert.match(src, /const audit = validatePkg\(fullPath\);/);
+  assert.match(src, /PKG incompleto, no se mueve a biblioteca/);
+});

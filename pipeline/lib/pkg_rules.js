@@ -14,6 +14,7 @@ const RE_FIX = /(^|[^a-z])fix([^a-z]|$)|_fix|fix_|optionalfix/;
 const RE_MOD_BLOCK = /(^|[^a-z])mod([^a-z]|$)|unlock[_ .-]?all|all[_ .-]?unlock/;
 const RE_FULLGAME = /fullgame|full\.game/;
 const RE_VERSION = /v(\d+)\.(\d+)/;
+const INSTALL_PRIORITY = { BASE: 0, FIX: 1, UPDATE: 2, DLC: 3 };
 
 /**
  * @param {string} filename
@@ -34,7 +35,16 @@ function getTitleId(filenameOrPath) {
  */
 function classifyPkg(filename) {
   const name = filename.toLowerCase();
-  if (/[-_]a0100-/.test(name)) return 'BASE';
+  // PSN: el UPDATE comparte app id con la base y solo cambia la versión.
+  // `UP9000-CUSA07408_00-XXXX-A0100-V0134` es el UPDATE v1.34, NO una base: sin
+  // esta distinción se clasificaba como BASE, y como la base de ese CUSA ya está
+  // instalada, el planificador lo descartaba como duplicado y el update nunca se
+  // instalaba (caso real: GoW 2018 CUSA07408 v1.34).
+  if (/[-_]a0*100[-_]/.test(name)) {
+    const version = name.match(/[-_]v0*(\d{1,4})[-_. ]/);
+    if (version && Number(version[1]) > 100) return 'UPDATE';
+    return 'BASE';
+  }
   if (RE_UPDATE.test(name)) return 'UPDATE';
   if (RE_DLC.test(name)) return 'DLC';
   if (RE_FIX.test(name)) return 'FIX';
@@ -46,6 +56,17 @@ function classifyPkg(filename) {
     if (major > 1 || minor > 0) return 'UPDATE';
   }
   return 'BASE';
+}
+
+/**
+ * Prioridad de instalación por categoría: cascada BASE → FIX → UPDATE → DLC.
+ * El orquestador LAN planificaba por tamaño ascendente, lo que metía los DLC
+ * (KB) antes que el UPDATE del mismo título y rompía la cascada documentada.
+ * @param {string} filenameOrPath
+ * @returns {number} menor = antes
+ */
+function installPriority(filenameOrPath) {
+  return INSTALL_PRIORITY[classifyPkg(path.basename(filenameOrPath))] ?? 9;
 }
 
 /**
@@ -151,7 +172,26 @@ const HELD_TITLES = new Set(['CUSA32836']); // Naruto retenido por orden del usu
   return { plan, held };
 }
 
-module.exports = { classifyPkg, getTitleId, planInstallOrder, isModBlocked };
+/**
+ * Pico de espacio que la PS5 necesita para instalar un PKG por LAN.
+ * El receiver descarga el PKG íntegro en /user/download y recién después el
+ * instalador escribe el app/patch, así que durante la instalación conviven
+ * ambos: ~2x el tamaño del PKG (dumps sin comprimir ≈ 1x el app; los PKG de
+ * PSN comprimidos expanden hasta ~1.1x). Sin este cálculo el pipeline
+ * descargaba 90 GB en un SSD con 85 GB libres: llenaba el disco y la
+ * transferencia moría a mitad de camino.
+ * @param {number} sizeBytes tamaño del PKG en bytes
+ * @param {string} [category] BASE | FIX | UPDATE | DLC
+ * @returns {number} bytes requeridos (0 cuando no hay tamaño conocido)
+ */
+function requiredHeadroomBytes(sizeBytes, category) {
+  const size = Number(sizeBytes) || 0;
+  if (size <= 0) return 0;
+  const factor = category === 'UPDATE' || category === 'DLC' ? 1.5 : 2.05;
+  return Math.ceil(size * factor) + 3 * 1024 ** 3;
+}
+
+module.exports = { classifyPkg, getTitleId, planInstallOrder, installPriority, isModBlocked, requiredHeadroomBytes };
 
 /**
  * Detecta mods de contenido (Unlock-All y similares) que son

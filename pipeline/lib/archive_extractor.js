@@ -147,18 +147,33 @@ function extractArchive(archivePath, outDir, logFile) {
     }
 
     if (tool === '7z') {
-      const listProc = spawnSync(SEVEN_ZIP, ['l', targetArchive, '-slt'], {
-        encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 5000,
-      });
-      const listOut = `${listProc.stdout || ''}\n${listProc.stderr || ''}`;
-      // Solo "volumen ausente" es retryable. Otro fallo de `7z l` (cabecera
-      // corrupta, binario roto) es permanente: iría a .failed en vez de
-      // reintentar eternamente y bloquear la carpeta.
-      if (/missing volume/i.test(listOut)) {
+      let listOut = '';
+      let listOk = false;
+      let missingVol = false;
+      const pwAttempts = ['', ...PASSWORDS];
+      for (const pwd of pwAttempts) {
+        const args = ['l', targetArchive, '-slt'];
+        if (pwd) args.push(`-p${pwd}`);
+        else args.push('-p-');
+        const listProc = spawnSync(SEVEN_ZIP, args, {
+          encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 5000,
+        });
+        const out = `${listProc.stdout || ''}\n${listProc.stderr || ''}`;
+        listOut = out;
+        if (/missing volume/i.test(out)) {
+          missingVol = true;
+          break;
+        }
+        if (listProc.status === 0) {
+          listOk = true;
+          break;
+        }
+      }
+      if (missingVol || /missing volume/i.test(listOut)) {
         return { success: false, retryable: true, extractedFiles: [], error: 'Volúmenes incompletos: faltan partes restantes (esperando descarga).' };
       }
-      if (listProc.status !== 0 || listProc.error) {
-        const why = (listProc.error && listProc.error.message) || `código ${listProc.status}`;
+      if (!listOk) {
+        const why = (listOut && listOut.trim().split('\n').pop()) || 'código desconocido';
         return { success: false, extractedFiles: [], error: `Listado 7z falló (archivo corrupto o ilegible): ${why}.` };
       }
     }

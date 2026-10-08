@@ -13,6 +13,7 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const { validatePkg } = require('../lib/pkg_validator.js');
 const { getPs5Config } = require('../lib/config.js');
 const { extractArchive: extractArchiveHardened, cleanupArchiveVolumes } = require('../lib/archive_extractor.js');
 const pkgRules = require('../lib/pkg_rules.js');
@@ -103,6 +104,47 @@ function listPkgs() {
 }
 
 /**
+ * Carpetas vigiladas (Desktop + carpeta de descargas de Telegram, etc.).
+ * @returns {string[]}
+ */
+function watchDirs() {
+  const dirs = Array.isArray(cfg.paths.watchDirs) && cfg.paths.watchDirs.length > 0
+    ? cfg.paths.watchDirs
+    : [cfg.paths.watchDir];
+  return [...new Set(dirs)].filter(Boolean);
+}
+
+/**
+ * Estabilidad de tamaño: Telegram Desktop escribe a ráfagas (vimos ventanas de
+ * 25-30 s sin escritura con el archivo aún incompleto), así que el mtime solo no
+ * alcanza. Aquí el archivo debe conservar EXACTAMENTE el mismo tamaño entre dos
+ * ciclos separados por >= minStableMs. La primera observación siempre devuelve
+ * false: se aprende el tamaño antes de decidir.
+ * @param {string} filePath
+ * @param {number} [now]
+ * @param {number} [minStableMs]
+ * @returns {boolean} true = tamaño estable (candidato a procesar)
+ */
+const SIZE_SEEN = new Map();
+/** Fallos ya reportados (evita spam de log cada 30 s en descargas incompletas). */
+const REPORTED_FAILURES = new Set();
+function isSizeStable(filePath, now = Date.now(), minStableMs = 90000) {
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    SIZE_SEEN.delete(filePath);
+    return false;
+  }
+  const prev = SIZE_SEEN.get(filePath);
+  if (!prev || prev.size !== stat.size) {
+    SIZE_SEEN.set(filePath, { size: stat.size, at: now });
+    return false;
+  }
+  return now - prev.at >= minStableMs;
+}
+
+/**
  * Limpieza post-éxito: borra TODO el conjunto multipart con matcher exacto
  * (no solo el volumen que disparó la extracción). Retorna el reporte del
  * cleanup para no declarar éxito si algún volumen quedó bloqueado.
@@ -114,11 +156,12 @@ function handleArchiveSuccess(archivePath) {
 }
 
 function processPendingArchives() {
-  if (!fs.existsSync(cfg.paths.watchDir)) return;
   const quarantine = path.join(cfg.paths.stagingDir, '_quarantine');
-  for (const file of fs.readdirSync(cfg.paths.watchDir)) {
+  for (const dir of watchDirs()) {
+  if (!fs.existsSync(dir)) continue;
+  for (const file of fs.readdirSync(dir)) {
     if (!ARCHIVE_EXT.has(path.extname(file).toLowerCase())) continue;
-    const fullPath = path.join(cfg.paths.watchDir, file);
+    const fullPath = path.join(dir, file);
     // Guarda anti-mod: contenido tocado (Unlock-All) a cuarentena, jamás a la consola.
     if (pkgRules.isModBlocked(file)) {
       try {
@@ -144,6 +187,8 @@ function processPendingArchives() {
       continue;
     }
     if (Date.now() - stat.mtimeMs < 10000) continue; // aún escribiéndose
+    // Telegram escribe a ráfagas y el mtime solo no basta: exigir tamaño estable.
+    if (!isSizeStable(fullPath)) continue;
     logPs5(TAG, `Extrayendo: ${file}`, cfg.state.logFile);
     const extRes = extractArchive(fullPath);
     if (!extRes.success) {
@@ -153,11 +198,21 @@ function processPendingArchives() {
         logPs5(TAG, `⏳ Partes incompletas, esperando resto de volúmenes: ${file}`, cfg.state.logFile);
         continue;
       }
-      const failed = `${fullPath}.failed`;
-      try {
-        fs.renameSync(fullPath, failed);
-      } catch {
-        // si no se puede renombrar, se deja como está
+      // En carpetas de descarga activas (p. ej. la de Telegram) NO se renombra a
+      // `.failed`: un volumen a medio bajar da el mismo error que uno corrupto y
+      // renombrarlo rompe la descarga en curso. Se reporta una vez y se reintenta
+      // cuando el usuario lo complete. En el watchDir clásico se mantiene el
+      // comportamiento histórico (marca .failed para que el humano lo vea).
+      if (dir === cfg.paths.watchDir) {
+        const failed = `${fullPath}.failed`;
+        try {
+          fs.renameSync(fullPath, failed);
+        } catch {
+          // si no se puede renombrar, se deja como está
+        }
+      } else if (!REPORTED_FAILURES.has(fullPath)) {
+        REPORTED_FAILURES.add(fullPath);
+        logPs5(TAG, `Extracción FALLIDA en carpeta de descargas (se deja intacta, puede faltar descarga): ${file}`, cfg.state.logFile);
       }
       logPs5(TAG, `Extracción FALLIDA (clave/corrupto): ${file}`, cfg.state.logFile);
       continue;
@@ -178,6 +233,7 @@ function processPendingArchives() {
       logPs5(TAG, `Extraído, pero no se pudo borrar el comprimido: ${file}`, cfg.state.logFile);
     }
   }
+  }
 }
 
 /**
@@ -186,9 +242,10 @@ function processPendingArchives() {
  * pisa un archivo ya presente en la biblioteca.
  */
 function processLoosePkgs() {
-  if (!fs.existsSync(cfg.paths.watchDir)) return;
   const quarantine = path.join(cfg.paths.stagingDir, '_quarantine');
-  for (const file of fs.readdirSync(cfg.paths.watchDir)) {
+  for (const dir of watchDirs()) {
+  if (!fs.existsSync(dir)) continue;
+  for (const file of fs.readdirSync(dir)) {
     if (path.extname(file).toLowerCase() !== '.pkg') continue;
     // Guarda anti-mod también para PKGs sueltos.
     if (pkgRules.isModBlocked(file)) {
@@ -202,10 +259,25 @@ function processLoosePkgs() {
       }
       continue;
     }
-    const fullPath = path.join(cfg.paths.watchDir, file);
+    const fullPath = path.join(dir, file);
     try {
       const stat = fs.statSync(fullPath);
       if (Date.now() - stat.mtimeMs < 60000) continue;
+      // Un .pkg a medio bajar (Telegram) NO se mueve a la biblioteca: el daemon
+      // lo instalaría incompleto. Mismo criterio que los archivos.
+      if (!isSizeStable(fullPath)) continue;
+      // Y aunque el tamaño esté quieto, el PKG debe pasar la auditoría
+      // estructural: una descarga truncada (PEER_ID_INVALID, cliente cerrado a
+      // medias) se queda en la carpeta de descarga en vez de ensuciar la
+      // biblioteca con un archivo que nunca va a instalar.
+      const audit = validatePkg(fullPath);
+      if (!audit.valid) {
+        if (!REPORTED_FAILURES.has(fullPath)) {
+          REPORTED_FAILURES.add(fullPath);
+          logPs5(TAG, `⏳ PKG incompleto, no se mueve a biblioteca: ${file} — ${audit.errors[0] || 'auditoría fallida'}`, cfg.state.logFile);
+        }
+        continue;
+      }
       const dest = path.join(cfg.paths.libraryDirs[0], file);
       if (fs.existsSync(dest)) continue;
       try {
@@ -221,6 +293,25 @@ function processLoosePkgs() {
       logPs5(TAG, `No se pudo mover ${file}: ${err.message}`, cfg.state.logFile);
     }
   }
+  }
+}
+
+/**
+ * ¿El PKG todavía se está escribiendo? IDM/aria2 descargan DIRECTAMENTE en la
+ * biblioteca, así que sin esta guarda el daemon dispara la instalación de un
+ * archivo a medio escribir: el receiver lo rechaza, se pierden minutos de
+ * transferencia y el paquete queda marcado como fallido.
+ * @param {string} filePath
+ * @param {number} [now]
+ * @param {number} [graceMs]
+ * @returns {boolean} true = inestable/aún escribiéndose (no instalar)
+ */
+function isStillWriting(filePath, now = Date.now(), graceMs = 120000) {
+  try {
+    return now - fs.statSync(filePath).mtimeMs < graceMs;
+  } catch {
+    return true; // sin stat no hay certeza: mejor esperar al próximo ciclo
+  }
 }
 
 async function installPass() {
@@ -228,7 +319,12 @@ async function installPass() {
   const plan = pkgRules.planInstallOrder(listPkgs(), installed);
   if (plan.plan.length === 0) return;
 
-  const pkgToInstall = plan.plan[0];
+  const writing = plan.plan.filter((p) => isStillWriting(p));
+  if (writing.length > 0) {
+    logPs5(TAG, `⏳ Aún escribiéndose (no se instala todavía): ${writing.map((p) => path.basename(p)).join(', ')}`, cfg.state.logFile);
+  }
+  const pkgToInstall = plan.plan.find((p) => !isStillWriting(p));
+  if (!pkgToInstall) return;
   await installPkg(pkgToInstall);
 
   if (plan.held.length > 0) {
@@ -269,8 +365,19 @@ async function main() {
     process.exit(0);
   }
   await cycle();
+  // Guarda de reentrancia: setInterval NO espera al ciclo anterior. installPkg
+  // tarda ~180s en fallar, así que sin esto quedan ~6 ciclos solapados y cada
+  // uno dispara /install contra el receiver de la PS5 (tarea única), que
+  // reinicia el pull desde byte 0. El techo resultante es ~30s x 1 Gbps =
+  // 3.36 GB, muy lejos de los 90.6 GB necesarios: bucle infinito que nunca
+  // avanza y jamás escribe en el SSOT.
+  let cicloEnVuelo = false;
   setInterval(() => {
-    cycle().catch((err) => logPs5(TAG, `Error en ciclo: ${err.message}`, cfg.state.logFile));
+    if (cicloEnVuelo) return;
+    cicloEnVuelo = true;
+    cycle()
+      .catch((err) => logPs5(TAG, `Error en ciclo: ${err.message}`, cfg.state.logFile))
+      .finally(() => { cicloEnVuelo = false; });
   }, 30000);
 }
 
@@ -281,4 +388,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { processPendingArchives, processLoosePkgs, extractArchive, handleArchiveSuccess, cycle };
+module.exports = { processPendingArchives, processLoosePkgs, extractArchive, handleArchiveSuccess, cycle, isStillWriting, isSizeStable, watchDirs };

@@ -3,7 +3,9 @@
  * @file update_payloads.js
  * @description Comprobador y actualizador automatizado de payloads dorados de PS5.
  *   Incluye verificación estricta SHA256, backup pre-escritura y rollback automático.
- * SRP < 180L. Cero dependencias externas.
+ *   Añade verificación de COMPATIBILIDAD DE FIRMWARE contra payloads/compatibility.json:
+ *   el SHA256 garantiza integridad, no que el payload cargue en el FW actual.
+ * SRP < 300L. Cero dependencias externas.
  */
 'use strict';
 
@@ -11,6 +13,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
 const crypto = require('node:crypto');
+const { getPs5Config } = require('../lib/config.js');
+const { loadPayloadCompatibility, checkPayloadFirmware } = require('../lib/ps5_compatibility.js');
 
 const REPOS = [
   { name: 'kstuff.elf', repo: 'EchoStretch/kstuff-lite', pattern: /\.elf$/i },
@@ -105,9 +109,12 @@ function applyPayloadWithRollback(targetFile, newBuffer, expectedSha256, backupR
   }
 }
 
-async function checkPayloadUpdates(dryRun = true) {
+async function checkPayloadUpdates(dryRun = true, opts = {}) {
   console.log('🔍 Consultando actualizaciones de payloads oficiales en GitHub...\n');
   const payloadDir = path.join(__dirname, '..', '..', 'payloads');
+  const consoleFw = opts.consoleFw || getPs5Config().ps5.firmware;
+  const matrix = loadPayloadCompatibility(opts.compatPath);
+  const blocked = [];
 
   for (const item of REPOS) {
     const apiUrl = `https://api.github.com/repos/${item.repo}/releases/latest`;
@@ -132,15 +139,39 @@ async function checkPayloadUpdates(dryRun = true) {
     if (matchingAsset) {
       console.log(`   └─ Asset descargable: ${matchingAsset.name} (${(matchingAsset.size / 1024).toFixed(1)} KB)`);
     }
+
+    // Verificación de FIRMWARE (no de hash): un payload "solo para 14.xx"
+    // cargaría y rompería el jailbreak; el SHA256 no lo detecta.
+    const fw = checkPayloadFirmware(item.name, consoleFw, matrix);
+    if (!fw.known) {
+      // Sin entrada en la matriz no hay veredicto posible: avisar, no bloquear
+      // (bloquear por falta de metadatos tumbaría payloads que sí funcionan).
+      console.log(`   └─ FW: ⚠️ ${fw.reason}`);
+    } else if (fw.compatible) {
+      console.log(`   └─ FW: ✔ ${fw.reason}`);
+    } else {
+      blocked.push(item.name);
+      console.log(`   └─ FW: ⛔ ${fw.reason}`);
+    }
+    if (fw.notes) console.log(`   └─ Notas: ${fw.notes}`);
     console.log('');
   }
 
+  if (blocked.length > 0) {
+    console.log(`⛔ Payloads INCOMPATIBLES con el FW de la consola (${consoleFw}): ${blocked.join(', ')}`);
+  }
   console.log('✅ Chequeo de releases completado.');
+  return { fw: consoleFw, blocked };
 }
 
 if (require.main === module) {
   const isDryRun = !process.argv.includes('--apply');
-  checkPayloadUpdates(isDryRun);
+  checkPayloadUpdates(isDryRun).then((res) => {
+    if (!isDryRun && res.blocked.length > 0) {
+      console.error(`⛔ ABORTADO: no se aplica ninguna actualización con payloads incompatibles con FW ${res.fw} (${res.blocked.join(', ')}).`);
+      process.exit(1);
+    }
+  });
 }
 
 module.exports = {

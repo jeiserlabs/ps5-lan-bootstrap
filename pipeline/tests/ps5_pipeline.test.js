@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyPkg, getTitleId, planInstallOrder, isModBlocked } = require('../lib/pkg_rules.js');
+const { classifyPkg, getTitleId, planInstallOrder, installPriority, isModBlocked, requiredHeadroomBytes } = require('../lib/pkg_rules.js');
 const { getPs5Config } = require('../lib/config.js');
 const { sanitizeFolderName, resolveGameFolder, getBestTargetLibrary } = require('../lib/library_organizer.js');
 const {
@@ -27,6 +27,12 @@ describe('pkg_rules — classifyPkg (nombres reales de la biblioteca)', () => {
     assert.equal(classifyPkg('[SuperPSX]-Overcooked.All.You.Can.Eat.PS4-CUSA23464-Game-(7.50+)-PS4.pkg'), 'BASE');
     assert.equal(classifyPkg('Homebrew-Store-PS5.pkg'), 'BASE');
     assert.equal(classifyPkg('UP9000-CUSA28561_00-A0100-V0100-CyB1K-[DLPSGAME.COM].pkg'), 'BASE');
+    // PSN: el UPDATE comparte app id (A0100) y solo sube la versión. Sin esta
+    // regla se clasificaba BASE → el planificador lo descartaba por duplicado
+    // (la base ya está instalada) y el update nunca se instalaba.
+    assert.equal(classifyPkg('UP9000-CUSA07408_00-GOW2018-A0100-V0134-[DLPSGAME.COM].pkg'), 'UPDATE');
+    assert.equal(classifyPkg('UP9000-CUSA07408_00-GOW2018-A0100-V0100-[DLPSGAME.COM].pkg'), 'BASE');
+    assert.equal(classifyPkg('UP9000-CUSA34384_00-A0605-V0100 [ High-Speed ].pkg'), 'UPDATE');
   });
 
   it('reconoce updates por palabra y por versión superior', () => {
@@ -115,6 +121,66 @@ describe('pkg_rules — planInstallOrder (cascada)', () => {
     const dlcNuevo = 'GameX_CUSA11111_EXTRA_PACK_DLC.pkg';
     const res = planInstallOrder([dlcNuevo], ['GameX_CUSA11111_BONUS_PACK_DLC.pkg', 'GameX_CUSA11111_v1.00.pkg']);
     assert.deepEqual(res.plan, [dlcNuevo]);
+  });
+});
+
+describe('pkg_rules — installPriority (cascada del orquestador LAN)', () => {
+  const base = 'CUSA34386_v1.00_[9.00]_OPOISSO893-[DLPSGAME.COM].pkg';
+  const update = 'God.of.War.Ragnarok_CUSA34386_v6.05_[9.00]_OPOISSO893.pkg';
+  const valhalla = 'God.of.War.Ragnarok_CUSA34386_Valhalla_OPOISSO893.pkg';
+  const dlc = 'CUSA34386_GOD_OF_WAR_RAGNAROK_DELUXE_PACK_DLC_FXD.pkg';
+
+  it('ordena BASE antes que UPDATE y DLC (aunque el DLC pese KB)', () => {
+    const orden = [dlc, update, base].sort((a, b) => installPriority(a) - installPriority(b));
+    assert.deepEqual(orden, [base, update, dlc]);
+  });
+
+  it('coloca Valhalla (DLC de 8 GB) después del UPDATE', () => {
+    assert.ok(installPriority(update) < installPriority(valhalla));
+    assert.equal(installPriority(dlc), installPriority(valhalla));
+  });
+
+  it('trata el FIX como base sustituta (antes que UPDATE y DLC)', () => {
+    assert.ok(installPriority('GameY_CUSA22222_v1.08_FIX.pkg') < installPriority(update));
+  });
+});
+
+describe('lan_installer — guarda anti-mod en el orquestador LAN', () => {
+  it('installPkg rechaza MODs (ALL.DLC.MOD estilo Mortal Kombat) antes de inyectar', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lan_installer.js'), 'utf8');
+    // El daemon ya filtraba mods, pero el orquestador LAN (que fue el que instaló
+    // CUSA11518_..._Update.v1.30.ALL.DLC.MOD y dejó la consola apagándose al abrir)
+    // inyectaba el paquete igual. La guarda debe estar en el camino compartido.
+    assert.match(src, /isModBlocked\(filename\)/);
+    assert.match(src, /MOD bloqueado/);
+    assert.match(src, /return false;\s*\n\s*\}/);
+  });
+});
+
+describe('pkg_rules — requiredHeadroomBytes (guarda de espacio en PS5)', () => {
+  const BASE_BYTES = 90624753664; // CUSA34386_v1.00 (90.62 GB)
+
+  it('exige descarga + instalado para una BASE (pico ~2x el PKG)', () => {
+    const req = requiredHeadroomBytes(BASE_BYTES, 'BASE');
+    assert.ok(req > BASE_BYTES * 2, `requerido ${req} debe superar el doble del PKG`);
+  });
+
+  it('la base real de GOW cabe en el SSD tras liberar el caché de pruebas', () => {
+    // 204 GB libres verificados hoy en la consola: la guarda NO debe bloquear una
+    // instalación legítima (falso positivo) ni permitir un pico sin espacio.
+    const req = requiredHeadroomBytes(BASE_BYTES, 'BASE');
+    assert.ok(req < 204e9, `requerido ${(req / 1e9).toFixed(1)} GB no debe exceder el espacio liberado`);
+    assert.ok(req > 85.8e9, 'debe bloquear el escenario que llenó el SSD (85.8 GB libres)');
+  });
+
+  it('sigue exigiendo margen para UPDATE y DLC pequeños', () => {
+    assert.ok(requiredHeadroomBytes(8809938944, 'DLC') > 8809938944);
+    assert.ok(requiredHeadroomBytes(8809938944, 'UPDATE') < requiredHeadroomBytes(8809938944, 'BASE'));
+  });
+
+  it('no bloquea cuando no hay tamaño conocido', () => {
+    assert.equal(requiredHeadroomBytes(0, 'BASE'), 0);
+    assert.equal(requiredHeadroomBytes(undefined, 'DLC'), 0);
   });
 });
 

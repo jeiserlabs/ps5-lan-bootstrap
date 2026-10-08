@@ -1,80 +1,84 @@
+#!/usr/bin/env python3
+"""
+deep_audit_ps5.py - Auditoría y Escaneo Profundo por FTP en PS5
+Escanea todas las zonas seguras del checklist y calcula espacio real.
+"""
+
 import ftplib
-import io
-import struct
+import socket
+import time
+import sys
 
-ftp = ftplib.FTP()
-ftp.connect('192.168.2.2', 2121, timeout=10)
-ftp.login()
+PS5_IP = "192.168.2.2"
+PS5_PORT = 2121
 
-def read_sfo(path):
-    bio = io.BytesIO()
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+def wait_ftp():
+    log(f"Esperando a que la PS5 inicie y levante FTP en {PS5_IP}:{PS5_PORT}...")
+    while True:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1.0)
+            if s.connect_ex((PS5_IP, PS5_PORT)) == 0:
+                s.close()
+                log("🟢 FTP DETECTADO ONLINE! Iniciando escaneo profundo...")
+                return True
+            s.close()
+        except Exception:
+            pass
+        time.sleep(1.0)
+
+def scan_dir(ftp, path):
+    print(f"\n==================== {path} ====================")
     try:
-        ftp.retrbinary(f'RETR {path}', bio.write)
-        data = bio.getvalue()
-        if len(data) < 20 or data[:4] != b'\x00PSF':
-            return {}
-        # Parse SFO
-        key_table_start, data_table_start, num_entries = struct.unpack('<III', data[8:20])
-        entries = []
-        for i in range(num_entries):
-            k_off, fmt, d_len, d_max, d_off = struct.unpack('<HHIII', data[20+i*16:20+(i+1)*16])
-            entries.append((k_off, fmt, d_len, d_off))
-        result = {}
-        for k_off, fmt, d_len, d_off in entries:
-            key = data[key_table_start + k_off:].split(b'\x00', 1)[0].decode('utf-8', errors='ignore')
-            val_bytes = data[data_table_start + d_off: data_table_start + d_off + d_len]
-            if fmt == 0x0004:
-                val = struct.unpack('<I', val_bytes)[0]
-            elif fmt in (0x0204, 0x0404):
-                val = val_bytes.rstrip(b'\x00').decode('utf-8', errors='ignore')
-            else:
-                val = val_bytes
-            result[key] = val
-        return result
+        ftp.cwd(path)
+        items = []
+        ftp.retrlines("LIST", items.append)
+        if not items:
+            print("  (Directorio vacío)")
+        else:
+            for it in items:
+                print("  " + it)
     except Exception as e:
-        return {}
+        print(f"  [No existe o no accesible: {e}]")
 
-def list_items(path):
-    items = []
+def main():
+    wait_ftp()
+    ftp = ftplib.FTP()
     try:
-        ftp.retrlines(f'LIST {path}', lambda l: items.append(l.split()[-1]))
-        return [i for i in items if i not in ('.', '..')]
-    except Exception:
-        return []
+        ftp.connect(PS5_IP, PS5_PORT, timeout=10)
+        ftp.login()
+        ftp.set_pasv(True)
 
-titles = [
-    ('CUSA01967', 'Horizon Zero Dawn'),
-    ('CUSA02299', "Marvel's Spider-Man"),
-    ('CUSA06210', 'Naruto Shippuden UNS4 RTB'),
-    ('CUSA07408', 'God of War (2018)'),
-    ('CUSA08004', 'A Way Out'),
-    ('CUSA10416', 'Unravel Two'),
-    ('CUSA13323', 'Ghost of Tsushima'),
-    ('CUSA13795', 'Crash Team Racing Nitro-Fueled'),
-    ('CUSA16742', 'It Takes Two'),
-    ('CUSA20499', 'Cuphead'),
-    ('CUSA23384', 'Haven'),
-    ('CUSA23464', 'Overcooked! All You Can Eat'),
-    ('CUSA43942', 'MLB The Show 24'),
-    ('CUSA57220', 'EA SPORTS FC 24/25')
-]
+        # 1. /user/download
+        scan_dir(ftp, "/user/download")
 
-print("==========================================================================================")
-print("AUDITORÍA DE ESTADO DE COMPONENTES INSTALADOS EN PS5")
-print("==========================================================================================")
+        # 2. /user/bgft/task y /user/bgft/trash
+        scan_dir(ftp, "/user/bgft/task")
+        scan_dir(ftp, "/user/bgft/trash")
 
-for tid, name in titles:
-    app_sfo = read_sfo(f'/user/app/{tid}/sce_sys/param.sfo')
-    patch_sfo = read_sfo(f'/user/patch/{tid}/sce_sys/param.sfo')
-    dlcs = list_items(f'/user/addcont/{tid}')
-    
-    app_ver = app_sfo.get('APP_VER', 'N/A')
-    patch_ver = patch_sfo.get('APP_VER', 'N/A')
-    
-    active_ver = patch_ver if patch_ver != 'N/A' else app_ver
-    
-    print(f"\n🎮 [{tid}] {name}")
-    print(f"   Base Ver: {app_ver} | Patch Ver: {patch_ver} -> Activa: v{active_ver}")
-    print(f"   DLCs en PS5 ({len(dlcs)}): {dlcs if dlcs else 'Ninguno'}")
+        # 3. Temporales /user/temp y /tmp
+        scan_dir(ftp, "/user/temp")
+        scan_dir(ftp, "/tmp")
 
-ftp.quit()
+        # 4. /user/appmeta vs /user/app
+        scan_dir(ftp, "/user/appmeta")
+
+        # 5. /data/shadowmount
+        scan_dir(ftp, "/data/shadowmount")
+
+        # 6. /data/ps5_autoloader
+        scan_dir(ftp, "/data/ps5_autoloader")
+
+        # 7. /data/logs
+        scan_dir(ftp, "/data/logs")
+
+        ftp.quit()
+        log("\nEscaneo profundo finalizado.")
+    except Exception as e:
+        log(f"Error en escaneo FTP: {e}")
+
+if __name__ == "__main__":
+    main()

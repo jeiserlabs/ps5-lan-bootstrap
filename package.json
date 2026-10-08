@@ -21,7 +21,8 @@
     "ps5:install-lan": "node pipeline/scripts/lan_installer.js",
     "ps5:backup": "node pipeline/scripts/console_state_backup.js",
     "ps5:audit": "python pipeline/scripts/audit_full.py",
-    "test": "node pipeline/tests/run_all.js"
+    "test": "node pipeline/tests/run_all.js",
+    "ps5:compat": "node pipeline/scripts/compat_audit.js"
   },
   "optionalDependencies": {
     "playwright-core": "^1.49.0"

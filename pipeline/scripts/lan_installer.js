@@ -13,6 +13,7 @@ const { getPs5Config } = require('../lib/config.js');
 const { logPs5 } = require('../lib/pipeline_log.js');
 const { validatePkg } = require('../lib/pkg_validator.js');
 const pkgRules = require('../lib/pkg_rules.js');
+const { checkCompatibility } = require('../lib/ps5_compatibility.js');
 const { sanitizeFilename } = require('../lib/security.js');
 const { ps5HttpGet, triggerPkgInstall } = require('../lib/ps5_client.js');
 const { sendTelegramMessage } = require('../lib/telegram.js');
@@ -22,6 +23,10 @@ const LIB_DIRS = cfg.paths.libraryDirs;
 const INSTALLED_FILE = cfg.state.installedFile || path.join(cfg.state.cacheDir, 'installed_pkgs.json');
 const LOG_FILE = path.join(path.dirname(cfg.state.logFile), 'lan_installer.log');
 const TAG = 'LAN_INSTALLER';
+// --keep-pc: instala y verifica pero NO borra el PKG del PC. El borrado
+// post-instalación es el comportamiento por defecto (libera la biblioteca),
+// pero es irreversible: úsalo cuando el PKG sea el único respaldo.
+const KEEP_PC = process.argv.includes('--keep-pc');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const httpGet = ps5HttpGet;
@@ -89,10 +94,17 @@ function verifyFtpInstalled(titleId, category, contentId) {
 }
 
 async function waitForPkgTransfer(filename, expectedSize, titleId, category, contentId) {
+  const startedAt = Date.now();
   let lastRangeTime = Date.now();
   let lastEndByte = 0;
   let hasStarted = false;
   let lastReportedPct = -1;
+  // Lectura incremental por offset. Arrancamos en el EOF actual para ignorar los
+  // RANGE históricos del log append-only: antes se leía el fichero entero (53 MB
+  // / 298k líneas) cada 5s, y una invocación nueva se siembra con el máximo
+  // histórico (3.36 GB) con lo que esperaba 180s en vano a superarse a sí misma.
+  let readOffset = 0;
+  try { readOffset = fs.statSync(cfg.state.logFile).size; } catch {}
 
   if (expectedSize < 20 * 1024 * 1024) {
     await sleep(2000);
@@ -101,31 +113,57 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category, con
       await sleep(5000);
       try {
         if (fs.existsSync(cfg.state.logFile)) {
-          const content = fs.readFileSync(cfg.state.logFile, 'utf8');
-          const lines = content.trim().split('\n').filter((l) => l.includes(filename) && l.includes('[SERVER] RANGE'));
-          if (lines.length > 0) {
-            hasStarted = true;
-            const lastLine = lines[lines.length - 1];
-            const m = lastLine.match(/RANGE "bytes=(\d+)-(\d+)"/);
-            if (m) {
-              const endByte = Number(m[2]);
-              if (endByte > lastEndByte) {
-                lastEndByte = endByte;
-                lastRangeTime = Date.now();
-                const pct = Math.floor((lastEndByte / expectedSize) * 100);
-                if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
-                  lastReportedPct = pct;
-                  logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
+          const size = fs.statSync(cfg.state.logFile).size;
+          if (size < readOffset) readOffset = 0; // log rotado/truncado
+          if (size > readOffset) {
+            const fd = fs.openSync(cfg.state.logFile, 'r');
+            let consumed = 0;
+            try {
+              const len = size - readOffset;
+              const buf = Buffer.alloc(len);
+              const bytes = fs.readSync(fd, buf, 0, len, readOffset);
+              const chunk = buf.toString('utf8', 0, bytes);
+              // No consumir una línea parcial: se relee entera la próxima vuelta
+              // para no perder el RANGE definitivo del 100%.
+              const nl = chunk.lastIndexOf('\n');
+              const complete = nl === -1 ? '' : chunk.slice(0, nl + 1);
+              consumed = nl === -1 ? 0 : nl + 1;
+              const lines = complete.split('\n').filter((l) => l.includes(filename) && l.includes('[SERVER] RANGE'));
+              if (lines.length > 0) {
+                hasStarted = true;
+                const lastLine = lines[lines.length - 1];
+                const m = lastLine.match(/RANGE "bytes=(\d+)-(\d+)"/);
+                if (m) {
+                  const endByte = Number(m[2]);
+                  if (endByte > lastEndByte) {
+                    lastEndByte = endByte;
+                    lastRangeTime = Date.now();
+                    const pct = Math.floor((lastEndByte / expectedSize) * 100);
+                    if (pct % 10 === 0 && pct !== lastReportedPct && pct < 100) {
+                      lastReportedPct = pct;
+                      logPs5(TAG, `⏳ Progreso ${filename}: ${pct}% (${(lastEndByte / 1e9).toFixed(1)} / ${(expectedSize / 1e9).toFixed(1)} GB)`, LOG_FILE);
+                    }
+                  }
+                  if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
+                    logPs5(TAG, `📦 100% transferido (${(expectedSize / 1e9).toFixed(2)} GB). Consolidando en PS5...`, LOG_FILE);
+                    break;
+                  }
                 }
               }
-              if (expectedSize > 0 && endByte >= expectedSize - 0x400000) {
-                logPs5(TAG, `📦 100% transferido (${(expectedSize / 1e9).toFixed(2)} GB). Consolidando en PS5...`, LOG_FILE);
-                break;
-              }
+            } finally {
+              fs.closeSync(fd);
             }
+            readOffset += consumed;
           }
         }
       } catch {}
+
+      // La PS5 aceptó el paquete pero nunca pidió rangos: fallar rápido en vez
+      // de esperar 1080 vueltas (90 min).
+      if (!hasStarted && Date.now() - startedAt > 120000) {
+        logPs5(TAG, `❌ La PS5 no solicitó ningún rango en 120s. Abortando.`, LOG_FILE);
+        return false;
+      }
 
       if (hasStarted && Date.now() - lastRangeTime > 180000) {
         if (expectedSize > 0 && lastEndByte >= expectedSize * 0.98) {
@@ -165,13 +203,54 @@ async function waitForPkgTransfer(filename, expectedSize, titleId, category, con
   return false;
 }
 
+/**
+ * Espacio libre real en la PS5 según el receiver (/api/space).
+ * @returns {Promise<number>} bytes libres o -1 si no se pudo leer
+ */
+async function getPs5FreeBytes() {
+  const res = await httpGet(`http://${cfg.ps5.ip}:${cfg.ps5.installPort}/api/space`, 4000);
+  if (!res || res.status !== 200) return -1;
+  try {
+    const free = Number(JSON.parse(res.body).free);
+    return Number.isFinite(free) ? free : -1;
+  } catch {
+    return -1;
+  }
+}
+
 async function installPkg(pkgPath, dryRun = false) {
   const filename = sanitizeFilename(path.basename(pkgPath));
+
+  // Guarda anti-mod (misma política que el daemon): los "ALL.DLC.MOD"/Unlock-All
+  // pasan la auditoría estructural pero tumban la consola al abrir el juego
+  // (caso CUSA11518 Mortal Kombat 11: base OK, update MOD → la PS5 se apaga).
+  // Antes solo el daemon los filtraba; el orquestador LAN los instalaba igual.
+  if (pkgRules.isModBlocked(filename)) {
+    logPs5(TAG, `🚫 MOD bloqueado (no se instala): ${filename}`, LOG_FILE);
+    if (!dryRun) {
+      sendTelegramMessage(`🚫 *MOD bloqueado*: ${filename} no se instala (puede apagar la consola al abrir el juego).`);
+    }
+    return false;
+  }
+
   const audit = validatePkg(pkgPath);
 
   if (!audit.valid) {
     logPs5(TAG, `❌ AUDITORÍA RECHAZÓ ${filename}: ${audit.errors.join(' | ')}. Omitiendo.`, LOG_FILE);
     return false;
+  }
+
+  // Guarda de compatibilidad por evidencia local: un título con rechazo
+  // determinista (mismo byte N veces con disco libre) NO se reintenta; los
+  // reportes de foros sin verificar solo dejan aviso en el log.
+  const compat = checkCompatibility(audit.info.titleId);
+  if (!compat.compatible) {
+    logPs5(TAG, `⛔ TÍTULO BLOQUEADO (${compat.titleId}): ${compat.reason} → ${compat.action} Omitido SIN descargar.`, LOG_FILE);
+    if (!dryRun) sendTelegramMessage(`⛔ *PS5 título bloqueado*: [${compat.titleId}] ${compat.reason}\n${compat.action}`);
+    return false;
+  }
+  if (compat.severity === 'warn') {
+    logPs5(TAG, `⚠️ Compatibilidad dudosa (${compat.titleId}): ${compat.reason} → ${compat.action}`, LOG_FILE);
   }
 
   const category = audit.info.category || pkgRules.classifyPkg(filename);
@@ -181,6 +260,29 @@ async function installPkg(pkgPath, dryRun = false) {
   if (dryRun) {
     console.log(`[DRY-RUN] Instalaría: ${filename} (${category}, ${sizeGb} GB)`);
     return true;
+  }
+
+  // Guarda anti-desbordamiento: el receiver escribe el PKG completo antes de
+  // instalar, así que el pico es ~2x el PKG. Sin esta guarda el orquestador
+  // llenaba el SSD (fallos previos a los 13.19 y 84.96 GB con el disco a 0
+  // bytes libres) y moría por timeout tras 20 minutos de transferencia.
+  const freeBytes = await getPs5FreeBytes();
+  const neededBytes = pkgRules.requiredHeadroomBytes(audit.info.sizeBytes, category);
+  if (freeBytes >= 0 && neededBytes > 0 && freeBytes < neededBytes) {
+    logPs5(
+      TAG,
+      `⛔ ESPACIO INSUFICIENTE en PS5 para ${filename}: libre ${(freeBytes / 1e9).toFixed(1)} GB < requerido ${(neededBytes / 1e9).toFixed(1)} GB (PKG ${(audit.info.sizeBytes / 1e9).toFixed(1)} GB). Omitido SIN descargar.`,
+      LOG_FILE,
+    );
+    sendTelegramMessage(
+      `⛔ *PS5 sin espacio*: ${filename} necesita ~${(neededBytes / 1e9).toFixed(1)} GB libres y hay ${(freeBytes / 1e9).toFixed(1)} GB. No se descarga para no llenar el SSD.`,
+    );
+    return false;
+  }
+  if (freeBytes >= 0) {
+    logPs5(TAG, `Espacio libre en PS5: ${(freeBytes / 1e9).toFixed(1)} GB (mínimo requerido ${(neededBytes / 1e9).toFixed(1)} GB) ✔`, LOG_FILE);
+  } else {
+    logPs5(TAG, '⚠️ No se pudo leer /api/space del receiver: se instala sin verificación de espacio.', LOG_FILE);
   }
 
   const fileUrl = `http://${cfg.ps5.pcIp}:${cfg.ps5.serverPort}/pkg/${encodeURIComponent(filename)}`;
@@ -207,6 +309,10 @@ async function installPkg(pkgPath, dryRun = false) {
     }
     if (!dryRun && (audit.info.sizeBytes > 1024 * 1024 * 1024 || category === 'BASE')) {
       sendTelegramMessage(`✅ *PS5 Instalado*: [${audit.info.titleId}] ${filename} (${sizeGb} GB) verificado en consola.`);
+    }
+    if (KEEP_PC) {
+      logPs5(TAG, `📁 Conservado en PC (--keep-pc): ${filename}`, LOG_FILE);
+      return true;
     }
     try {
       if (fs.existsSync(pkgPath)) {
@@ -235,7 +341,11 @@ async function main() {
   const isDryRun = process.argv.includes('--dry-run');
   const titleArgIdx = process.argv.indexOf('--title');
   const titleFilter = titleArgIdx >= 0 ? process.argv[titleArgIdx + 1].toUpperCase() : null;
-  logPs5(TAG, `=== INICIO DE ORQUESTADOR LAN (FASE 2)${titleFilter ? ` [Filtro: ${titleFilter}]` : ''} ===`, LOG_FILE);
+  logPs5(
+    TAG,
+    `=== INICIO DE ORQUESTADOR LAN (FASE 2)${titleFilter ? ` [Filtro: ${titleFilter}]` : ''}${KEEP_PC ? ' [keep-pc]' : ''} ===`,
+    LOG_FILE,
+  );
 
   const serverOk = await ensureServerRunning();
   if (!serverOk) {
@@ -250,7 +360,13 @@ async function main() {
     const installed = loadInstalledList();
     const { plan: rawPlan, held } = pkgRules.planInstallOrder(allPkgs, installed);
     const plan = rawPlan.filter((p) => !failedSet.has(path.basename(p)));
+    // Cascada primero (BASE → FIX → UPDATE → DLC) y, dentro de cada categoría,
+    // el más liviano primero. Ordenar solo por tamaño ponía los DLC de 0.5 MB
+    // antes que el UPDATE del mismo título.
     plan.sort((a, b) => {
+      const pa = pkgRules.installPriority(a);
+      const pb = pkgRules.installPriority(b);
+      if (pa !== pb) return pa - pb;
       try { return fs.statSync(a).size - fs.statSync(b).size; } catch { return 0; }
     });
 

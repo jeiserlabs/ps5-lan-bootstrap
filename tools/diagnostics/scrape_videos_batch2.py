@@ -1,0 +1,42 @@
+import json
+import subprocess
+import os
+
+video_ids = [
+    "tHZGEtpe0pQ",
+    "YiAD8XolzOM",
+    "HqF1rmvA2iE",
+    "P0l5ZooURGY",
+    "lWZ9B9vcVfw"
+]
+
+results = []
+
+for vid in video_ids:
+    url = f"https://www.youtube.com/watch?v={vid}"
+    cmd = [
+        "yt-dlp",
+        "--dump-json",
+        "--skip-download",
+        url
+    ]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(p.stdout)
+        summary = {
+            "id": vid,
+            "title": data.get("title"),
+            "uploader": data.get("uploader"),
+            "upload_date": data.get("upload_date"),
+            "description": data.get("description", "")[:2000]
+        }
+        results.append(summary)
+        print(f"[+] Scraped: {vid} - {summary['title']}")
+    except Exception as e:
+        print(f"[-] Failed {vid}: {e}")
+
+out_path = r"E:\ps5\data\yt_scraped_batch2.json"
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(results, f, indent=2, ensure_ascii=False)
+
+print(f"[DONE] Saved {len(results)} summaries to {out_path}")
