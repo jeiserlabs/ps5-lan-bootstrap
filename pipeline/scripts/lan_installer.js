@@ -224,7 +224,7 @@ async function main() {
   const failedSet = new Set();
   while (true) {
     let allPkgs = LIB_DIRS.flatMap((dir) => collectLibraryPkgs(dir, 3));
-    if (titleFilter) allPkgs = allPkgs.filter((p) => path.basename(p).toUpperCase().includes(titleFilter));
+    if (titleFilter) allPkgs = allPkgs.filter((p) => p.toUpperCase().includes(titleFilter) || path.basename(p).toUpperCase().includes(titleFilter));
     const installed = loadInstalledList(INSTALLED_FILE);
     const { plan: rawPlan, held } = pkgRules.planInstallOrder(allPkgs, installed);
     const plan = rawPlan.filter((p) => !failedSet.has(path.basename(p)));

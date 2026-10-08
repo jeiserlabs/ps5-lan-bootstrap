@@ -1,11 +1,11 @@
 # SSOT — Juegos instalados y verificados en la PS5
 
-Generado: 2026-10-08T09:25:00-05:00 · Fuente: auditoría FTP real (`/user/app`, `/user/patch`, `/user/addcont`)
+Generado: 2026-10-08T12:37:00-05:00 · Fuente: auditoría FTP real (`/user/app`, `/user/patch`, `/user/addcont`)
 SSOT: `data/cache/ps5/installed_pkgs.json` · Auditoría script: `pipeline/scripts/audit_full.py`
 
 | # | Juego | Title ID | Base | Update | DLCs | Estado |
 |---|---|---|---|---|---|---|
-| 1 | God of War Ragnarök | CUSA34388 | 90.55 GB | 19.56 GB (v2.00) | 2 (Deluxe + Preorder) | 100% FULL |
+| 1 | God of War Ragnarök | CUSA34388 | 90.55 GB | 23.13 GB (v5.05) | 3 (Deluxe + Preorder + Valhalla) | 100% FULL |
 | 2 | Horizon Forbidden West | CUSA28561 | 71.27 GB | 2.44 GB | 2 | 100% FULL |
 | 3 | MLB The Show 24 | CUSA43942 | 48.33 GB | 33.92 GB | — | 100% FULL |
 | 4 | Ghost of Tsushima Director's Cut | CUSA13323 | 48.65 GB (v2.24) | Integrado | 1 (Iki Island) | 100% FULL |
@@ -19,6 +19,6 @@ SSOT: `data/cache/ps5/installed_pkgs.json` · Auditoría script: `pipeline/scrip
 | 12 | Haven | CUSA23384 | 4.62 GB (v1.06) | Integrado | — | 100% FULL |
 | 13 | NARUTO X BORUTO Ultimate Ninja STORM CONNECTIONS | CUSA32836 | 22.71 GB | 11.39 GB (v1.60) | 12 (13 packs) | 100% FULL |
 
-**Totales:** 13 juegos · bases ~509.65 GB · updates ~110.30 GB · 32 DLCs activos
+**Totales:** 13 juegos · bases ~509.65 GB · updates ~113.87 GB · 33 DLCs activos
 **Homebrew/otros:** ITEM00001, NPXS39041, NPXS40172, SLUG51851, PKGS12800, WKAL00001
-**Almacenamiento PS5:** 132.14 GB libres en SSD · /user/download limpio (0 bytes) · 0 fragmentos huérfanos
+**Almacenamiento PS5:** 118.64 GB libres en SSD · /user/download limpio (0 bytes) · 0 fragmentos huérfanos

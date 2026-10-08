@@ -180,14 +180,17 @@ const server = http.createServer((req, res) => {
     stream.on('data', (chunk) => {
       sent += chunk.length;
     });
-    req.on('close', () => stream.destroy());
+    const cleanup = () => { try { stream.destroy(); } catch {} };
+    req.on('close', cleanup);
+    res.on('error', cleanup);
     res.on('close', () => {
+      cleanup();
       const secs = Math.max((Date.now() - reqT0) / 1000, 0.001);
       const mb = sent / 1e6;
       logPs5(TAG, `FIN ${filename}: ${mb.toFixed(1)} MB en ${secs.toFixed(1)}s (${(mb / secs).toFixed(1)} MB/s)`);
     });
     stream.on('error', () => {
-      stream.destroy();
+      cleanup();
       if (!res.headersSent) res.writeHead(500);
       res.end();
     });
@@ -204,8 +207,15 @@ const server = http.createServer((req, res) => {
     'Keep-Alive': 'timeout=30, max=1000',
   });
   const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
-  req.on('close', () => stream.destroy());
-  stream.on('error', () => stream.destroy());
+  const cleanup = () => { try { stream.destroy(); } catch {} };
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+  stream.on('error', () => {
+    cleanup();
+    if (!res.headersSent) res.writeHead(500);
+    res.end();
+  });
   stream.pipe(res);
 });
 
@@ -225,6 +235,8 @@ function main() {
     process.exit(0);
   });
   process.on('uncaughtException', (err) => {
+    const ignored = ['EPIPE', 'ECONNRESET', 'ECANCELED', 'ERR_STREAM_PREMATURE_CLOSE'];
+    if (ignored.includes(err.code) || ignored.some((code) => (err.message || '').includes(code))) return;
     logPs5(TAG, `Excepción capturada y neutralizada: ${err.message}`, cfg.state.logFile);
   });
   server.listen(PORT, '0.0.0.0', () => {
