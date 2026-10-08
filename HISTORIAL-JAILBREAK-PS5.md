@@ -618,3 +618,22 @@ kstuff-lite_v1.11.elf,!8000,pkg-receiver.elf,!2000,ftpsrv-ps5.elf,!2000,ShadowMo
 - Almacenamiento PS5: 132.14 GB libres en SSD interno. `/user/download` limpio (0 bytes).
 - Estabilidad de la consola: Uptime continuo verificado **>125 minutos** sin kernel panics.
 - Limpieza en PC: PKG Base (22.71 GB), Update (11.39 GB), carpeta `NARUTO_DLCS` y archivo RAR purgados por completo del Desktop.
+
+## 32. Golden Freeze: God of War Ragnarök v5.05 + Valhalla DLC (8.81 GB) + Deluxe/Preorder, 13 Juegos 100% FULL Definitivo (8-oct tarde)
+
+**1. Despliegue y Consolidación de Ragnarök a su Versión Máxima:**
+- **Update v5.05 CyB1K (`CUSA34388`):** PKG de 23.13 GB (`EP9000-CUSA34388_00-A0505-V0100-CyB1K-[DLPSGAME.COM].pkg`) inyectado por LAN Gigabit. Sustituyó limpiamente a la v2.00 previa en `/user/patch/CUSA34388/patch.pkg` (23,129,751,552 bytes).
+- **DLC Expansión Valhalla (`CUSA34386`):** PKG de 8.81 GB (`God.of.War.Ragnarok_CUSA34386_Valhalla_OPOISSO893.pkg`) inyectado por LAN. Consolidado al 100% en `/user/addcont/CUSA34386/GOWRDLCCONTENT00/ac.pkg` (8,809,938,944 bytes). Notificación oficial de PS5: *"Este complemento está listo para usar"*.
+- **2 DLCs Cosméticos Deluxe & Preorder:** `CUSA34386_GOD_OF_WAR_RAGNAROK_DELUXE_PACK_DLC_FXD.pkg` y `CUSA34386_GOD_OF_WAR_RAGNAROK_PREORDER_PACK_DLC_FXD.pkg` (0.5 MB c/u) inyectados y consolidados en el sistema.
+- **Resultado en Juego:** Parche v5.05 enlaza nativamente los DLCs de `CUSA34386`; modo roguelite Valhalla y cosméticos activos en el menú principal.
+
+**2. Hardening Crítico de Rendimiento LAN (Bugfix `server.js`):**
+- **Causa Raíz:** Fuga de descriptor en `server.js` al cerrar conexión la PS5 en peticiones de rango; el `readStream` continuaba escribiendo en socket cerrado emitiendo millones de errores `EPIPE` capturados en `uncaughtException`, que realizaba `fs.appendFileSync` sincrónico a disco. Esto colapsó el event loop de Node.js al 100% de CPU y redujo la velocidad de 113 MB/s a 3.5 MB/s.
+- **Corrección:** Destrucción forzada de streams en eventos `close`/`error` de `res`/`req`, filtro de socket closures en `uncaughtException` y purga de logs. Velocidad restaurada de inmediato a **113 MB/s sostenidos (1 Gbps pleno)**.
+
+**3. Gran Biblioteca Consolidada Final (GOLDEN FREEZE):**
+- **13 Juegos Comerciales 100% FULL:** GoW Ragnarök (v5.05 + Valhalla + 2 DLCs), Horizon Forbidden West, MLB The Show 24, Ghost of Tsushima DC, Horizon Zero Dawn CE, Marvel's Spider-Man, Miles Morales, GoW 2018, It Takes Two, A Way Out, Crash Team Racing Nitro-Fueled, Haven, Naruto x Boruto Connections.
+- **Totales Globales:** Bases ~509.65 GB · Updates ~113.87 GB · **33 DLCs activos**.
+- **Almacenamiento PS5:** **118.64 GB libres en SSD interno**. Margen óptimo de salud y rendimiento. `/user/download` limpio (0 bytes, 0 fragmentos).
+- **Estabilidad Consola:** Uptime ininterrumpido **>160 minutos** en FW 13.40 Slim Disc con cero caídas ni panics.
+- **Estado de Repositorio:** 122/122 pruebas automáticas en verde. Working tree limpio. Congelado como GOLDEN.
